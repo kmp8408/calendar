@@ -248,15 +248,13 @@
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
 
-  // 画面の表示年月
-  let displayDate = new Date(); // 現在の基準日
+  let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_vFINAL";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v_SHIELD";
 
-  // メモリ上のマスターデータ（最優先）
   let memoryData = {};
+  let saveTimerMap = {};
 
-  // 日付キー生成を厳密化（ゼロ埋め YYYY-MM-DD）
   function toKey(d) {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -285,8 +283,26 @@
     label.textContent = text;
   }
 
+  // 🛡️ 画面上の全入力欄から今その場で入力されている文字を強制吸い上げ
+  function scrapeCurrentInputs() {
+    document.querySelectorAll(".day-cell").forEach(cell => {
+      const dateKey = cell.dataset.dateKey;
+      if (!dateKey) return;
+      if (!memoryData[dateKey]) {
+        memoryData[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
+      }
+      const inputs = cell.querySelectorAll(".event-input");
+      inputs.forEach((inp, idx) => {
+        memoryData[dateKey].events[idx] = inp.value.trim();
+      });
+    });
+    saveStorage();
+  }
+
   // クラウドからデータ取得
   function fetchCloudData() {
+    // 🛡️ 取得前に、今手元で入力中の文字があれば吸い上げて保護
+    scrapeCurrentInputs();
     setSyncStatus(true, "データ取得中...");
 
     const cb = "cb_" + Date.now();
@@ -294,16 +310,25 @@
 
     window[cb] = function(cloudData) {
       if (cloudData && typeof cloudData === "object") {
-        // クラウドのデータをメモリへ統合（キーの書式ゆれを吸収）
         for (const k in cloudData) {
           const item = cloudData[k];
-          // スラッシュや1桁月日をハイフン2桁に正規化
           const parts = k.split(/[\/\-]/);
-          if (parts.length === 3) {
-            const cleanKey = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+          const cleanKey = parts.length === 3 ? `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}` : k;
+
+          // 🛡️ 手元にすでに入力がある場合は手元を最優先し、消去を防ぐ
+          if (!memoryData[cleanKey]) {
             memoryData[cleanKey] = item;
           } else {
-            memoryData[k] = item;
+            // events の各要素で、手元が空白でクラウドに値がある場合のみ補完
+            for (let i = 0; i < 4; i++) {
+              if (!memoryData[cleanKey].events[i] && item.events && item.events[i]) {
+                memoryData[cleanKey].events[i] = item.events[i];
+              }
+            }
+            if (!memoryData[cleanKey].exitTime && item.exitTime) memoryData[cleanKey].exitTime = item.exitTime;
+            if (item.amOff) memoryData[cleanKey].amOff = true;
+            if (item.pmOff) memoryData[cleanKey].pmOff = true;
+            if (item.isImportant) memoryData[cleanKey].isImportant = true;
           }
         }
         saveStorage();
@@ -323,7 +348,7 @@
     document.body.appendChild(script);
   }
 
-  // クラウド保存（POST送信）
+  // クラウドへ保存
   function sendToCloud(dateKey) {
     setSyncStatus(true, "保存中...");
     const dayData = memoryData[dateKey] || {};
@@ -358,24 +383,17 @@
     }
 
     const year = displayDate.getFullYear();
-    const month = displayDate.getMonth(); // 0-11
+    const month = displayDate.getMonth();
     document.getElementById("monthDisplay").textContent = `${year}年 ${month + 1}月`;
 
-    // 月初
     const firstDate = new Date(year, month, 1);
-    const startDay = firstDate.getDay(); // 0: 日曜
-
-    // 当月の日数
+    const startDay = firstDate.getDay();
     const lastDate = new Date(year, month + 1, 0);
     const totalDays = lastDate.getDate();
-
-    // 前月末日
     const prevLastDate = new Date(year, month, 0).getDate();
-
-    // 今日のキー
     const todayKey = toKey(new Date());
 
-    // 前月埋め
+    // 前月
     for (let i = startDay - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevLastDate - i);
       grid.appendChild(createCell(d, true, todayKey));
@@ -387,7 +405,7 @@
       grid.appendChild(createCell(d, false, todayKey));
     }
 
-    // 翌月埋め
+    // 翌月
     const totalPlaced = startDay + totalDays;
     const remaining = (7 - (totalPlaced % 7)) % 7;
     for (let i = 1; i <= remaining; i++) {
@@ -396,7 +414,6 @@
     }
   }
 
-  // セルDOM生成
   function createCell(dateObj, isOtherMonth, todayKey) {
     const dateKey = toKey(dateObj);
     const dayOfWeek = dateObj.getDay();
@@ -407,6 +424,7 @@
     const dayData = memoryData[dateKey];
 
     const cell = document.createElement("div");
+    cell.dataset.dateKey = dateKey;
     cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${dateKey === todayKey ? 'today' : ''} ${dayOfWeek === 0 ? 'sun' : ''} ${dayOfWeek === 6 ? 'sat' : ''}`;
     if (dayData.isImportant) cell.classList.add('important-day');
     if (dayData.amOff) cell.classList.add('am-off');
@@ -516,12 +534,18 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      // 入力した瞬間にメモリ＆ストレージへ確定（消える隙を完全排除）
-      input.addEventListener("change", () => {
+      // 🛡️ 1文字打つたびに即座に内部メモリに保持（Enterやクリック不要）
+      input.addEventListener("input", () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
-        dayData.events[i] = input.value.trim();
+        dayData.events[i] = input.value;
         saveStorage();
-        sendToCloud(dateKey);
+
+        // 打ち終わりを検知して自動でクラウド送信
+        clearTimeout(saveTimerMap[dateKey]);
+        setSyncStatus(true, "保存中...");
+        saveTimerMap[dateKey] = setTimeout(() => {
+          sendToCloud(dateKey);
+        }, 700);
       });
 
       eventsList.appendChild(input);
@@ -533,16 +557,19 @@
 
   // ボタンイベント
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
+    scrapeCurrentInputs();
     displayDate.setMonth(displayDate.getMonth() - 1);
     renderCalendar();
   });
 
   document.getElementById("nextMonthBtn").addEventListener("click", () => {
+    scrapeCurrentInputs();
     displayDate.setMonth(displayDate.getMonth() + 1);
     renderCalendar();
   });
 
   document.getElementById("todayBtn").addEventListener("click", () => {
+    scrapeCurrentInputs();
     displayDate = new Date();
     renderCalendar();
   });
