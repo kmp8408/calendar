@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.6 -->
-      <span class="app-version" id="appVersion">v1.0.6</span>
+      <!-- 🏷️ バージョン v1.0.7 -->
+      <span class="app-version" id="appVersion">v1.0.7</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -264,20 +264,15 @@
   </div>
 </div>
 
-<!-- 🛡️ スマホでも確実にPOST送信を通すための非表示iframeとフォーム -->
-<iframe name="hidden_send_frame" id="hiddenSendFrame" style="display:none;"></iframe>
-<form id="hiddenSendForm" target="hidden_send_frame" method="POST" style="display:none;"></form>
-
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.6";
+  const APP_VERSION = "v1.0.7";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v106";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v107";
 
   let memoryData = {};
-  let isSavingToCloud = false;
 
   function toKey(d) {
     const year = d.getFullYear();
@@ -307,9 +302,8 @@
     label.textContent = text;
   }
 
-  // 🛡️ スマホ・PC両対応：フォームによる確実なPOST送信
+  // クラウド保存（CORS制限を完全回避するプレーンPOST）
   function sendToCloud(dateKey) {
-    isSavingToCloud = true;
     setSyncStatus(true, "保存中...");
     const dayData = memoryData[dateKey] || {};
 
@@ -322,86 +316,23 @@
       isImportant: !!dayData.isImportant
     };
 
-    const form = document.getElementById("hiddenSendForm");
-    form.action = GAS_API_URL;
-    form.innerHTML = ""; // クリア
-
-    // JSONペイロードをそのままボディに渡すための隠しinput
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "postData";
-    input.value = JSON.stringify(payload);
-    form.appendChild(input);
-
-    // iframeの読込完了イベントで保存完了を検知
-    const iframe = document.getElementById("hiddenSendFrame");
-    const onLoaded = function() {
-      isSavingToCloud = false;
+    fetch(GAS_API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    }).then(() => {
       setSyncStatus(false, "保存完了");
-      iframe.removeEventListener("load", onLoaded);
-    };
-    iframe.addEventListener("load", onLoaded);
-
-    // フォーム送信（スマホのブラウザが絶対にブロックしないWeb標準送信）
-    try {
-      form.submit();
-    } catch (e) {
-      // フォールバック（万が一のfetch）
-      fetch(GAS_API_URL, {
-        method: "POST",
-        mode: "no-cors",
-        keepalive: true,
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(payload)
-      }).finally(() => {
-        isSavingToCloud = false;
-        setSyncStatus(false, "保存完了");
-      });
-    }
-
-    // 3秒経過してもloadが取れない場合の安全タイマー
-    setTimeout(() => {
-      if (isSavingToCloud) {
-        isSavingToCloud = false;
-        setSyncStatus(false, "保存完了");
-      }
-    }, 3000);
-  }
-
-  // 画面の全入力枠から強制吸い上げ
-  function flushAllInputsToMemory() {
-    document.querySelectorAll(".day-cell").forEach(cell => {
-      const dateKey = cell.dataset.dateKey;
-      if (!dateKey) return;
-      if (!memoryData[dateKey]) {
-        memoryData[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
-      }
-      const inputs = cell.querySelectorAll(".event-input");
-      let changed = false;
-      inputs.forEach((inp, idx) => {
-        const val = inp.value.trim();
-        if (memoryData[dateKey].events[idx] !== val) {
-          memoryData[dateKey].events[idx] = val;
-          changed = true;
-        }
-      });
-      if (changed) {
-        sendToCloud(dateKey);
-      }
+    }).catch(() => {
+      setSyncStatus(false, "端末に保存済");
     });
-    saveStorage();
   }
 
-  // クラウドからデータ取得（JSONP）
+  // クラウドからデータ取得（JSONP：DOM安全追加・削除）
   function fetchCloudData() {
-    if (isSavingToCloud) {
-      setTimeout(fetchCloudData, 800);
-      return;
-    }
-
     setSyncStatus(true, "データ取得中...");
 
-    const cbName = "cb_" + Math.floor(Math.random() * 10000000);
+    const cbName = "cb_" + Date.now();
     const script = document.createElement("script");
 
     window[cbName] = function(cloudData) {
@@ -417,12 +348,12 @@
             if (item.events) {
               if (!memoryData[cleanKey].events) memoryData[cleanKey].events = ["", "", "", ""];
               for (let i = 0; i < 4; i++) {
-                if (item.events[i] !== undefined && item.events[i] !== "") {
+                if (item.events[i]) {
                   memoryData[cleanKey].events[i] = item.events[i];
                 }
               }
             }
-            if (item.exitTime !== undefined && item.exitTime !== "") memoryData[cleanKey].exitTime = item.exitTime;
+            if (item.exitTime) memoryData[cleanKey].exitTime = item.exitTime;
             if (item.amOff !== undefined) memoryData[cleanKey].amOff = item.amOff;
             if (item.pmOff !== undefined) memoryData[cleanKey].pmOff = item.pmOff;
             if (item.isImportant !== undefined) memoryData[cleanKey].isImportant = item.isImportant;
@@ -438,11 +369,13 @@
 
     script.src = `${GAS_API_URL}?callback=${cbName}&_t=${Date.now()}`;
     script.onerror = function() {
-      setSyncStatus(false, "オフライン表示");
+      // 万一通信が失敗しても手元データでそのまま表示継続（消さない）
+      setSyncStatus(false, "オフライン表示（端末保持）");
+      renderCalendar();
       delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
     };
-    document.body.appendChild(script);
+    document.head.appendChild(script);
   }
 
   function renderCalendar() {
@@ -601,7 +534,7 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      const commitEvent = () => {
+      const commit = () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
         const val = input.value.trim();
         if (dayData.events[i] !== val) {
@@ -611,8 +544,8 @@
         }
       };
 
-      input.addEventListener("change", commitEvent);
-      input.addEventListener("blur", commitEvent);
+      input.addEventListener("change", commit);
+      input.addEventListener("blur", commit);
 
       eventsList.appendChild(input);
     }
@@ -622,19 +555,16 @@
   }
 
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
-    flushAllInputsToMemory();
     displayDate.setMonth(displayDate.getMonth() - 1);
     renderCalendar();
   });
 
   document.getElementById("nextMonthBtn").addEventListener("click", () => {
-    flushAllInputsToMemory();
     displayDate.setMonth(displayDate.getMonth() + 1);
     renderCalendar();
   });
 
   document.getElementById("todayBtn").addEventListener("click", () => {
-    flushAllInputsToMemory();
     displayDate = new Date();
     renderCalendar();
   });
@@ -643,7 +573,6 @@
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
     }
-    flushAllInputsToMemory();
     fetchCloudData();
   });
 
