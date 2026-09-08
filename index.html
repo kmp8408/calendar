@@ -18,11 +18,7 @@
       --important-border: #ef4444;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -67,10 +63,7 @@
       color: var(--text-main);
       transition: background 0.15s;
     }
-
-    button:hover {
-      background: #f3f4f6;
-    }
+    button:hover { background: #f3f4f6; }
 
     .current-month-display {
       font-size: 1.3rem;
@@ -91,9 +84,7 @@
       border-radius: 50%;
       background: #10b981;
     }
-    .syncing .sync-indicator {
-      background: #f59e0b;
-    }
+    .syncing .sync-indicator { background: #f59e0b; }
 
     .calendar-grid {
       display: grid;
@@ -128,15 +119,8 @@
       position: relative;
     }
 
-    .day-cell.other-month {
-      background: #fafafa;
-      opacity: 0.4;
-    }
-
-    .day-cell.today {
-      background-color: var(--today-bg);
-      border: 2px solid #3b82f6;
-    }
+    .day-cell.other-month { background: #fafafa; opacity: 0.4; }
+    .day-cell.today { background-color: var(--today-bg); border: 2px solid #3b82f6; }
 
     .day-cell.important-day {
       border: 2.5px solid var(--important-border) !important;
@@ -165,19 +149,11 @@
       z-index: 3; 
     }
 
-    .day-number {
-      font-weight: 700;
-      font-size: 0.95rem;
-      min-width: 20px;
-    }
+    .day-number { font-weight: 700; font-size: 0.95rem; min-width: 20px; }
     .sun .day-number { color: var(--sunday-color); }
     .sat .day-number { color: var(--saturday-color); }
 
-    .day-status {
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
+    .day-status { display: flex; align-items: center; gap: 3px; }
 
     .status-flags {
       display: flex;
@@ -187,25 +163,10 @@
       border-radius: 3px;
       font-size: 0.72rem;
     }
+    .status-flags label { cursor: pointer; display: flex; align-items: center; gap: 1px; }
+    .status-flags input[type="checkbox"] { cursor: pointer; width: 12px; height: 12px; }
 
-    .status-flags label {
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 1px;
-    }
-
-    .status-flags input[type="checkbox"] {
-      cursor: pointer;
-      width: 12px;
-      height: 12px;
-    }
-
-    .mark-important {
-      color: #dc2626;
-      font-weight: 900;
-      font-size: 0.8rem;
-    }
+    .mark-important { color: #dc2626; font-weight: 900; font-size: 0.8rem; }
 
     .leave-time-select {
       font-size: 0.85rem;
@@ -240,22 +201,9 @@
       outline: none;
       transition: all 0.15s;
     }
-
-    .event-input:hover {
-      background: rgba(243, 244, 246, 0.85);
-      border-color: #e5e7eb;
-    }
-
-    .event-input:focus {
-      background: #ffffff;
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 1px #60a5fa;
-    }
-
-    .event-input::placeholder {
-      color: #9ca3af;
-      font-size: 0.7rem;
-    }
+    .event-input:hover { background: rgba(243, 244, 246, 0.85); border-color: #e5e7eb; }
+    .event-input:focus { background: #ffffff; border-color: #60a5fa; box-shadow: 0 0 0 1px #60a5fa; }
+    .event-input::placeholder { color: #9ca3af; font-size: 0.7rem; }
 
     @media (max-width: 600px) {
       body { padding: 4px; }
@@ -275,14 +223,14 @@
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
-        <span id="syncText">同期中...</span>
+        <span id="syncText">同期準備完了</span>
       </div>
     </div>
     <div class="nav-buttons">
       <button id="prevMonthBtn">◀ 前月</button>
       <button id="todayBtn">今月</button>
       <button id="nextMonthBtn">翌月 ▶</button>
-      <button id="refreshBtn" title="クラウドから最新データを再取得">🔄 クラウド読込</button>
+      <button id="refreshBtn" title="クラウドから最新データを再取得">🔄 更新</button>
     </div>
   </header>
 
@@ -300,88 +248,85 @@
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
 
-  let currentYear = new Date().getFullYear();
-  let currentMonth = new Date().getMonth();
+  // 画面の表示年月
+  let displayDate = new Date(); // 現在の基準日
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v6";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_vFINAL";
 
-  let saveTimerMap = {}; // 入力デバウンス用
+  // メモリ上のマスターデータ（最優先）
+  let memoryData = {};
 
-  function loadLocalData() {
+  // 日付キー生成を厳密化（ゼロ埋め YYYY-MM-DD）
+  function toKey(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function loadStorage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       return raw ? JSON.parse(raw) : {};
-    } catch (e) {
-      return {};
-    }
+    } catch (e) { return {}; }
   }
 
-  function saveLocalData(data) {
+  function saveStorage() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryData));
     } catch (e) {}
-  }
-
-  function formatDateKey(year, month, day) {
-    const m = String(month + 1).padStart(2, '0');
-    const d = String(day).padStart(2, '0');
-    return `${year}-${m}-${d}`;
   }
 
   function setSyncStatus(isSyncing, text) {
     const wrapper = document.getElementById("syncStatus");
     const label = document.getElementById("syncText");
-    if (isSyncing) {
-      wrapper.classList.add("syncing");
-    } else {
-      wrapper.classList.remove("syncing");
-    }
+    if (isSyncing) { wrapper.classList.add("syncing"); }
+    else { wrapper.classList.remove("syncing"); }
     label.textContent = text;
   }
 
-  // クラウドからデータ取得（安全マージ方式）
+  // クラウドからデータ取得
   function fetchCloudData() {
     setSyncStatus(true, "データ取得中...");
 
-    const callbackName = "cb_" + Math.floor(Math.random() * 1000000);
+    const cb = "cb_" + Date.now();
     const script = document.createElement("script");
 
-    window[callbackName] = function(cloudData) {
+    window[cb] = function(cloudData) {
       if (cloudData && typeof cloudData === "object") {
-        const local = loadLocalData();
-        // クラウドのデータをベースにしつつ、ローカルで編集中（空白以外）の最新値があれば保護
-        const merged = { ...cloudData };
-        for (const k in local) {
-          if (!merged[k]) {
-            merged[k] = local[k];
+        // クラウドのデータをメモリへ統合（キーの書式ゆれを吸収）
+        for (const k in cloudData) {
+          const item = cloudData[k];
+          // スラッシュや1桁月日をハイフン2桁に正規化
+          const parts = k.split(/[\/\-]/);
+          if (parts.length === 3) {
+            const cleanKey = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+            memoryData[cleanKey] = item;
+          } else {
+            memoryData[k] = item;
           }
         }
-        saveLocalData(merged);
+        saveStorage();
       }
-      
       renderCalendar();
       setSyncStatus(false, "同期完了");
-      
-      delete window[callbackName];
+      delete window[cb];
       if (script.parentNode) script.parentNode.removeChild(script);
     };
 
-    script.src = `${GAS_API_URL}?callback=${callbackName}&_nocache=${Date.now()}`;
+    script.src = `${GAS_API_URL}?callback=${cb}&_t=${Date.now()}`;
     script.onerror = function() {
-      setSyncStatus(false, "オフライン（端末データ表示）");
-      delete window[callbackName];
+      setSyncStatus(false, "オフライン表示");
+      delete window[cb];
       if (script.parentNode) script.parentNode.removeChild(script);
     };
     document.body.appendChild(script);
   }
 
-  // クラウドへ保存（POST）
-  function triggerSaveToCloud(dateKey) {
-    const data = loadLocalData();
-    const dayData = data[dateKey];
-    if (!dayData) return;
-
-    setSyncStatus(true, "自動保存中...");
+  // クラウド保存（POST送信）
+  function sendToCloud(dateKey) {
+    setSyncStatus(true, "保存中...");
+    const dayData = memoryData[dateKey] || {};
 
     const payload = {
       date: dateKey,
@@ -399,70 +344,80 @@
       body: JSON.stringify(payload)
     }).then(() => {
       setSyncStatus(false, "保存完了");
-    }).catch(err => {
+    }).catch(() => {
       setSyncStatus(false, "端末に保存済");
     });
   }
 
   // カレンダー描画
   function renderCalendar() {
-    const data = loadLocalData();
     const grid = document.getElementById("calendarGrid");
 
     while (grid.children.length > 7) {
       grid.removeChild(grid.lastChild);
     }
 
-    document.getElementById("monthDisplay").textContent = `${currentYear}年 ${currentMonth + 1}月`;
+    const year = displayDate.getFullYear();
+    const month = displayDate.getMonth(); // 0-11
+    document.getElementById("monthDisplay").textContent = `${year}年 ${month + 1}月`;
 
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const startDayOfWeek = firstDay.getDay();
-    const totalDays = lastDay.getDate();
+    // 月初
+    const firstDate = new Date(year, month, 1);
+    const startDay = firstDate.getDay(); // 0: 日曜
 
-    // 前月末
-    const prevLastDay = new Date(currentYear, currentMonth, 0).getDate();
-    for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      const dayNum = prevLastDay - i;
-      const prevDate = new Date(currentYear, currentMonth - 1, dayNum);
-      const cell = createDayCell(prevDate.getFullYear(), prevDate.getMonth(), dayNum, true, data);
-      grid.appendChild(cell);
+    // 当月の日数
+    const lastDate = new Date(year, month + 1, 0);
+    const totalDays = lastDate.getDate();
+
+    // 前月末日
+    const prevLastDate = new Date(year, month, 0).getDate();
+
+    // 今日のキー
+    const todayKey = toKey(new Date());
+
+    // 前月埋め
+    for (let i = startDay - 1; i >= 0; i--) {
+      const d = new Date(year, month - 1, prevLastDate - i);
+      grid.appendChild(createCell(d, true, todayKey));
     }
 
     // 当月
-    const today = new Date();
-    for (let day = 1; day <= totalDays; day++) {
-      const isToday = (today.getFullYear() === currentYear && today.getMonth() === currentMonth && today.getDate() === day);
-      const cell = createDayCell(currentYear, currentMonth, day, false, data, isToday);
-      grid.appendChild(cell);
+    for (let i = 1; i <= totalDays; i++) {
+      const d = new Date(year, month, i);
+      grid.appendChild(createCell(d, false, todayKey));
     }
 
-    // 翌月初
-    const remainingCells = (7 - ((startDayOfWeek + totalDays) % 7)) % 7;
-    for (let day = 1; day <= remainingCells; day++) {
-      const nextDate = new Date(currentYear, currentMonth + 1, day);
-      const cell = createDayCell(nextDate.getFullYear(), nextDate.getMonth(), day, true, data);
-      grid.appendChild(cell);
+    // 翌月埋め
+    const totalPlaced = startDay + totalDays;
+    const remaining = (7 - (totalPlaced % 7)) % 7;
+    for (let i = 1; i <= remaining; i++) {
+      const d = new Date(year, month + 1, i);
+      grid.appendChild(createCell(d, true, todayKey));
     }
   }
 
-  // 単一日セル作成
-  function createDayCell(year, month, day, isOtherMonth, allData, isToday = false) {
-    const dateKey = formatDateKey(year, month, day);
-    const dayData = allData[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
-
-    const dateObj = new Date(year, month, day);
+  // セルDOM生成
+  function createCell(dateObj, isOtherMonth, todayKey) {
+    const dateKey = toKey(dateObj);
     const dayOfWeek = dateObj.getDay();
 
+    if (!memoryData[dateKey]) {
+      memoryData[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
+    }
+    const dayData = memoryData[dateKey];
+
     const cell = document.createElement("div");
-    cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${dayOfWeek === 0 ? 'sun' : ''} ${dayOfWeek === 6 ? 'sat' : ''} ${dayData.amOff ? 'am-off' : ''} ${dayData.pmOff ? 'pm-off' : ''} ${dayData.isImportant ? 'important-day' : ''}`;
+    cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${dateKey === todayKey ? 'today' : ''} ${dayOfWeek === 0 ? 'sun' : ''} ${dayOfWeek === 6 ? 'sat' : ''}`;
+    if (dayData.isImportant) cell.classList.add('important-day');
+    if (dayData.amOff) cell.classList.add('am-off');
+    if (dayData.pmOff) cell.classList.add('pm-off');
 
     const header = document.createElement("div");
     header.className = "day-header";
 
     const dayNumber = document.createElement("span");
     dayNumber.className = "day-number";
-    dayNumber.textContent = day;
+    dayNumber.textContent = dateObj.getDate();
 
     const statusGroup = document.createElement("div");
     statusGroup.className = "day-status";
@@ -470,16 +425,17 @@
     const statusFlags = document.createElement("div");
     statusFlags.className = "status-flags";
 
-    // 1. 重要（！）チェック
+    // 重要（！）チェック
     const impLabel = document.createElement("label");
-    impLabel.title = "重要日（太枠表示）";
+    impLabel.title = "重要日";
     const impCheck = document.createElement("input");
     impCheck.type = "checkbox";
     impCheck.checked = !!dayData.isImportant;
     impCheck.addEventListener("change", () => {
-      updateDayData(dateKey, { isImportant: impCheck.checked });
+      dayData.isImportant = impCheck.checked;
       cell.classList.toggle('important-day', impCheck.checked);
-      triggerSaveToCloud(dateKey);
+      saveStorage();
+      sendToCloud(dateKey);
     });
     const impText = document.createElement("span");
     impText.className = "mark-important";
@@ -487,30 +443,32 @@
     impLabel.appendChild(impCheck);
     impLabel.appendChild(impText);
 
-    // 2. 午前休チェック
+    // 午前休チェック
     const amLabel = document.createElement("label");
     amLabel.title = "午前休";
     const amCheck = document.createElement("input");
     amCheck.type = "checkbox";
     amCheck.checked = !!dayData.amOff;
     amCheck.addEventListener("change", () => {
-      updateDayData(dateKey, { amOff: amCheck.checked });
+      dayData.amOff = amCheck.checked;
       cell.classList.toggle('am-off', amCheck.checked);
-      triggerSaveToCloud(dateKey);
+      saveStorage();
+      sendToCloud(dateKey);
     });
     amLabel.appendChild(amCheck);
     amLabel.appendChild(document.createTextNode("前"));
 
-    // 3. 午後休チェック
+    // 午後休チェック
     const pmLabel = document.createElement("label");
     pmLabel.title = "午後休";
     const pmCheck = document.createElement("input");
     pmCheck.type = "checkbox";
     pmCheck.checked = !!dayData.pmOff;
     pmCheck.addEventListener("change", () => {
-      updateDayData(dateKey, { pmOff: pmCheck.checked });
+      dayData.pmOff = pmCheck.checked;
       cell.classList.toggle('pm-off', pmCheck.checked);
-      triggerSaveToCloud(dateKey);
+      saveStorage();
+      sendToCloud(dateKey);
     });
     pmLabel.appendChild(pmCheck);
     pmLabel.appendChild(document.createTextNode("後"));
@@ -522,7 +480,6 @@
     // 退勤丸数字
     const timeSelect = document.createElement("select");
     timeSelect.className = "leave-time-select";
-
     const emptyOpt = document.createElement("option");
     emptyOpt.value = "";
     emptyOpt.textContent = "—";
@@ -537,8 +494,9 @@
     }
 
     timeSelect.addEventListener("change", () => {
-      updateDayData(dateKey, { exitTime: timeSelect.value });
-      triggerSaveToCloud(dateKey);
+      dayData.exitTime = timeSelect.value;
+      saveStorage();
+      sendToCloud(dateKey);
     });
 
     statusGroup.appendChild(statusFlags);
@@ -558,19 +516,12 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      // 💡 入力された瞬間にローカルへ即保存＆入力終了から800ms後にクラウドへ自動送信
-      input.addEventListener("input", () => {
-        const currentData = loadLocalData()[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
-        const newEvents = [...(currentData.events || ["", "", "", ""])];
-        newEvents[i] = input.value;
-        updateDayData(dateKey, { events: newEvents });
-
-        // デバウンス送信（タイプが止まったら自動送信）
-        clearTimeout(saveTimerMap[dateKey]);
-        setSyncStatus(true, "編集中...");
-        saveTimerMap[dateKey] = setTimeout(() => {
-          triggerSaveToCloud(dateKey);
-        }, 800);
+      // 入力した瞬間にメモリ＆ストレージへ確定（消える隙を完全排除）
+      input.addEventListener("change", () => {
+        if (!dayData.events) dayData.events = ["", "", "", ""];
+        dayData.events[i] = input.value.trim();
+        saveStorage();
+        sendToCloud(dateKey);
       });
 
       eventsList.appendChild(input);
@@ -580,32 +531,19 @@
     return cell;
   }
 
-  function updateDayData(dateKey, diff) {
-    const data = loadLocalData();
-    if (!data[dateKey]) {
-      data[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
-    }
-    data[dateKey] = { ...data[dateKey], ...diff };
-    saveLocalData(data);
-    return data[dateKey];
-  }
-
+  // ボタンイベント
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
-    currentMonth--;
-    if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+    displayDate.setMonth(displayDate.getMonth() - 1);
     renderCalendar();
   });
 
   document.getElementById("nextMonthBtn").addEventListener("click", () => {
-    currentMonth++;
-    if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+    displayDate.setMonth(displayDate.getMonth() + 1);
     renderCalendar();
   });
 
   document.getElementById("todayBtn").addEventListener("click", () => {
-    const now = new Date();
-    currentYear = now.getFullYear();
-    currentMonth = now.getMonth();
+    displayDate = new Date();
     renderCalendar();
   });
 
@@ -613,7 +551,8 @@
     fetchCloudData();
   });
 
-  // 初回起動：ローカル描画 ➔ クラウドから安全マージ取得
+  // 起動シーケンス
+  memoryData = loadStorage();
   renderCalendar();
   fetchCloudData();
 </script>
