@@ -309,14 +309,14 @@
 </div>
 
 <script>
-  const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyS8wZ5NW_8PrpkLvVvEQVFL9Fnmts-nxaCkPQrFONucMjmvhe3-Yi1IXNowUxNylvF/exec";
+  // ⚙️ 新しく発行された有効なGAS WebアプリURLを設定済み
+  const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
 
   let currentYear = new Date().getFullYear();
   let currentMonth = new Date().getMonth();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v3";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v4";
 
-  // キャッシュ読込
   function loadLocalData() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -326,21 +326,18 @@
     }
   }
 
-  // キャッシュ保存
   function saveLocalData(data) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {}
   }
 
-  // 日付キー生成（YYYY-MM-DD）
   function formatDateKey(year, month, day) {
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
     return `${year}-${m}-${d}`;
   }
 
-  // ステータス表示
   function setSyncStatus(isSyncing, text) {
     const wrapper = document.getElementById("syncStatus");
     const label = document.getElementById("syncText");
@@ -352,7 +349,7 @@
     label.textContent = text;
   }
 
-  // クラウドからデータ取得（JSONP方式：キャッシュ無効化パラメータ付き）
+  // クラウドからデータ取得（JSONP方式）
   function fetchCloudData() {
     if (!GAS_API_URL || !GAS_API_URL.endsWith("/exec")) {
       setSyncStatus(false, "ローカル動作中");
@@ -364,18 +361,15 @@
     const script = document.createElement("script");
 
     window[callbackName] = function(cloudData) {
-      console.log("クラウド取得データ:", cloudData);
-      
-      // クラウドのデータを最優先でローカルキャッシュへ上書き反映
+      // クラウドのデータを最優先でローカルキャッシュへ上書き
       const local = loadLocalData();
       const merged = { ...local, ...cloudData };
       saveLocalData(merged);
       
-      // 画面再描画
+      // 画面を再描画
       renderCalendar();
       setSyncStatus(false, "同期完了");
       
-      // 後片付け
       delete window[callbackName];
       if (script.parentNode) {
         script.parentNode.removeChild(script);
@@ -393,7 +387,7 @@
     document.body.appendChild(script);
   }
 
-  // クラウドへデータ送信（no-cors POST）
+  // クラウドへデータ送信（no-cors POST方式）
   function sendToCloud(dateKey, dayData) {
     if (!GAS_API_URL || !GAS_API_URL.endsWith("/exec")) return;
 
@@ -622,7 +616,6 @@
     fetchCloudData();
   });
 
-  // 初回描画＆クラウド取得
   renderCalendar();
   fetchCloudData();
 </script>
