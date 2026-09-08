@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.7 -->
-      <span class="app-version" id="appVersion">v1.0.7</span>
+      <!-- 🏷️ バージョン v1.0.8 -->
+      <span class="app-version" id="appVersion">v1.0.8</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,13 +266,14 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.7";
+  const APP_VERSION = "v1.0.8";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v107";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v108";
 
   let memoryData = {};
+  let isSaving = false;
 
   function toKey(d) {
     const year = d.getFullYear();
@@ -302,8 +303,9 @@
     label.textContent = text;
   }
 
-  // クラウド保存（CORS制限を完全回避するプレーンPOST）
-  function sendToCloud(dateKey) {
+  // クラウド保存（認証情報の除外と安全な非同期送信）
+  async function sendToCloud(dateKey) {
+    isSaving = true;
     setSyncStatus(true, "保存中...");
     const dayData = memoryData[dateKey] || {};
 
@@ -316,26 +318,49 @@
       isImportant: !!dayData.isImportant
     };
 
-    fetch(GAS_API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    }).then(() => {
+    try {
+      await fetch(GAS_API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        credentials: "omit", // Android ChromeのGoogleアカウントCookieによる干渉を完全に遮断
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
       setSyncStatus(false, "保存完了");
-    }).catch(() => {
+    } catch (e) {
       setSyncStatus(false, "端末に保存済");
-    });
+    } finally {
+      isSaving = false;
+    }
   }
 
-  // クラウドからデータ取得（JSONP：DOM安全追加・削除）
+  // クラウドからデータ取得（JSONP：anonymous付与とタイムアウト保護）
   function fetchCloudData() {
     setSyncStatus(true, "データ取得中...");
 
     const cbName = "cb_" + Date.now();
     const script = document.createElement("script");
+    let isCompleted = false;
+
+    // 15秒の通信タイムアウトを設定
+    const timer = setTimeout(() => {
+      if (!isCompleted) {
+        isCompleted = true;
+        setSyncStatus(false, "オフライン表示（タイムアウト）");
+        cleanup();
+      }
+    }, 15000);
+
+    function cleanup() {
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
 
     window[cbName] = function(cloudData) {
+      if (isCompleted) return;
+      isCompleted = true;
+      clearTimeout(timer);
+
       if (cloudData && typeof cloudData === "object") {
         for (const k in cloudData) {
           const item = cloudData[k];
@@ -348,33 +373,33 @@
             if (item.events) {
               if (!memoryData[cleanKey].events) memoryData[cleanKey].events = ["", "", "", ""];
               for (let i = 0; i < 4; i++) {
-                if (item.events[i]) {
-                  memoryData[cleanKey].events[i] = item.events[i];
-                }
+                memoryData[cleanKey].events[i] = item.events[i] || "";
               }
             }
-            if (item.exitTime) memoryData[cleanKey].exitTime = item.exitTime;
-            if (item.amOff !== undefined) memoryData[cleanKey].amOff = item.amOff;
-            if (item.pmOff !== undefined) memoryData[cleanKey].pmOff = item.pmOff;
-            if (item.isImportant !== undefined) memoryData[cleanKey].isImportant = item.isImportant;
+            memoryData[cleanKey].exitTime = item.exitTime || "";
+            memoryData[cleanKey].amOff = item.amOff !== undefined ? item.amOff : false;
+            memoryData[cleanKey].pmOff = item.pmOff !== undefined ? item.pmOff : false;
+            memoryData[cleanKey].isImportant = item.isImportant !== undefined ? item.isImportant : false;
           }
         }
         saveStorage();
       }
       renderCalendar();
       setSyncStatus(false, "同期完了");
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
+      cleanup();
     };
 
+    script.crossOrigin = "anonymous"; // GoogleアカウントCookieを乗せずに匿名実行
     script.src = `${GAS_API_URL}?callback=${cbName}&_t=${Date.now()}`;
     script.onerror = function() {
-      // 万一通信が失敗しても手元データでそのまま表示継続（消さない）
+      if (isCompleted) return;
+      isCompleted = true;
+      clearTimeout(timer);
       setSyncStatus(false, "オフライン表示（端末保持）");
       renderCalendar();
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
+      cleanup();
     };
+
     document.head.appendChild(script);
   }
 
@@ -546,6 +571,12 @@
 
       input.addEventListener("change", commit);
       input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          commit();
+          input.blur();
+        }
+      });
 
       eventsList.appendChild(input);
     }
@@ -569,9 +600,16 @@
     renderCalendar();
   });
 
-  document.getElementById("refreshBtn").addEventListener("click", () => {
+  // 更新ボタン：フォーカス解除と保存完了を待機してから取得
+  document.getElementById("refreshBtn").addEventListener("click", async () => {
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
+    }
+    // 保存処理中の場合は最大1秒待機
+    let waitCount = 0;
+    while (isSaving && waitCount < 10) {
+      await new Promise(res => setTimeout(res, 100));
+      waitCount++;
     }
     fetchCloudData();
   });
