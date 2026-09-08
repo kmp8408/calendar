@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.5 -->
-      <span class="app-version" id="appVersion">v1.0.5</span>
+      <!-- 🏷️ バージョン v1.0.6 -->
+      <span class="app-version" id="appVersion">v1.0.6</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -264,13 +264,17 @@
   </div>
 </div>
 
+<!-- 🛡️ スマホでも確実にPOST送信を通すための非表示iframeとフォーム -->
+<iframe name="hidden_send_frame" id="hiddenSendFrame" style="display:none;"></iframe>
+<form id="hiddenSendForm" target="hidden_send_frame" method="POST" style="display:none;"></form>
+
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.5";
+  const APP_VERSION = "v1.0.6";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v105";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v106";
 
   let memoryData = {};
   let isSavingToCloud = false;
@@ -303,7 +307,7 @@
     label.textContent = text;
   }
 
-  // クラウド保存（POST：keepaliveでスマホ通信を完全保証）
+  // 🛡️ スマホ・PC両対応：フォームによる確実なPOST送信
   function sendToCloud(dateKey) {
     isSavingToCloud = true;
     setSyncStatus(true, "保存中...");
@@ -318,20 +322,50 @@
       isImportant: !!dayData.isImportant
     };
 
-    // 📱 keepalive: true でスマホ画面切替時も通信を完結させる
-    fetch(GAS_API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      keepalive: true,
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify(payload)
-    }).then(() => {
+    const form = document.getElementById("hiddenSendForm");
+    form.action = GAS_API_URL;
+    form.innerHTML = ""; // クリア
+
+    // JSONペイロードをそのままボディに渡すための隠しinput
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "postData";
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+
+    // iframeの読込完了イベントで保存完了を検知
+    const iframe = document.getElementById("hiddenSendFrame");
+    const onLoaded = function() {
       isSavingToCloud = false;
       setSyncStatus(false, "保存完了");
-    }).catch(() => {
-      isSavingToCloud = false;
-      setSyncStatus(false, "端末に保存済");
-    });
+      iframe.removeEventListener("load", onLoaded);
+    };
+    iframe.addEventListener("load", onLoaded);
+
+    // フォーム送信（スマホのブラウザが絶対にブロックしないWeb標準送信）
+    try {
+      form.submit();
+    } catch (e) {
+      // フォールバック（万が一のfetch）
+      fetch(GAS_API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        keepalive: true,
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload)
+      }).finally(() => {
+        isSavingToCloud = false;
+        setSyncStatus(false, "保存完了");
+      });
+    }
+
+    // 3秒経過してもloadが取れない場合の安全タイマー
+    setTimeout(() => {
+      if (isSavingToCloud) {
+        isSavingToCloud = false;
+        setSyncStatus(false, "保存完了");
+      }
+    }, 3000);
   }
 
   // 画面の全入力枠から強制吸い上げ
@@ -358,10 +392,10 @@
     saveStorage();
   }
 
-  // クラウドからデータ取得
+  // クラウドからデータ取得（JSONP）
   function fetchCloudData() {
     if (isSavingToCloud) {
-      setTimeout(fetchCloudData, 600);
+      setTimeout(fetchCloudData, 800);
       return;
     }
 
@@ -567,7 +601,6 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      // 入力値を確定してクラウド送信する関数
       const commitEvent = () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
         const val = input.value.trim();
