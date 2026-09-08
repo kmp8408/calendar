@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.1 -->
-      <span class="app-version" id="appVersion">v1.0.1</span>
+      <!-- 🏷️ バージョン v1.0.2 -->
+      <span class="app-version" id="appVersion">v1.0.2</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,14 +266,13 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.1";
+  const APP_VERSION = "v1.0.2";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v101";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v102";
 
   let memoryData = {};
-  let saveTimerMap = {};
 
   function toKey(d) {
     const year = d.getFullYear();
@@ -303,44 +302,57 @@
     label.textContent = text;
   }
 
-  // 💡 クラウドから最新データを強制取得・上書き反映（キャッシュ完全無効化）
+  // 🛡️ クラウド取得処理（手元データを絶対に飛ばさない安全マージ）
   function fetchCloudData() {
-    setSyncStatus(true, "最新データ取得中...");
+    setSyncStatus(true, "データ取得中...");
 
-    // ランダム英数字＋タイムスタンプで絶対にキャッシュさせない
-    const rand = Math.random().toString(36).substring(2, 9);
-    const cb = "cb_" + Date.now() + "_" + rand;
+    const cbName = "cb_" + Math.floor(Math.random() * 10000000);
     const script = document.createElement("script");
 
-    window[cb] = function(cloudData) {
+    window[cbName] = function(cloudData) {
       if (cloudData && typeof cloudData === "object") {
-        // クラウドのデータを完全に正（最新）としてメモリへ適用
-        const newData = {};
         for (const k in cloudData) {
           const item = cloudData[k];
           const parts = k.split(/[\/\-]/);
           const cleanKey = parts.length === 3 ? `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}` : k;
-          newData[cleanKey] = item;
+
+          if (!memoryData[cleanKey]) {
+            memoryData[cleanKey] = item;
+          } else {
+            // クラウドに有効なデータがある場合は安全に反映
+            if (item.events) {
+              if (!memoryData[cleanKey].events) memoryData[cleanKey].events = ["", "", "", ""];
+              for (let i = 0; i < 4; i++) {
+                // 手元が空、またはクラウドに新データがある場合に反映
+                if (item.events[i]) {
+                  memoryData[cleanKey].events[i] = item.events[i];
+                }
+              }
+            }
+            if (item.exitTime) memoryData[cleanKey].exitTime = item.exitTime;
+            if (item.amOff !== undefined) memoryData[cleanKey].amOff = item.amOff;
+            if (item.pmOff !== undefined) memoryData[cleanKey].pmOff = item.pmOff;
+            if (item.isImportant !== undefined) memoryData[cleanKey].isImportant = item.isImportant;
+          }
         }
-        memoryData = newData;
         saveStorage();
       }
       renderCalendar();
       setSyncStatus(false, "同期完了");
-      delete window[cb];
+      delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
     };
 
-    // 複数のキャッシュキラーパラメータを付与
-    script.src = `${GAS_API_URL}?callback=${cb}&_rnd=${rand}&_ts=${Date.now()}`;
+    script.src = `${GAS_API_URL}?callback=${cbName}&_t=${Date.now()}`;
     script.onerror = function() {
-      setSyncStatus(false, "同期エラー");
-      delete window[cb];
+      setSyncStatus(false, "オフライン表示");
+      delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
     };
     document.body.appendChild(script);
   }
 
+  // クラウド保存（POST送信）
   function sendToCloud(dateKey) {
     setSyncStatus(true, "保存中...");
     const dayData = memoryData[dateKey] || {};
@@ -366,6 +378,7 @@
     });
   }
 
+  // カレンダー描画
   function renderCalendar() {
     const grid = document.getElementById("calendarGrid");
 
@@ -384,16 +397,19 @@
     const prevLastDate = new Date(year, month, 0).getDate();
     const todayKey = toKey(new Date());
 
+    // 前月
     for (let i = startDay - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevLastDate - i);
       grid.appendChild(createCell(d, true, todayKey));
     }
 
+    // 当月
     for (let i = 1; i <= totalDays; i++) {
       const d = new Date(year, month, i);
       grid.appendChild(createCell(d, false, todayKey));
     }
 
+    // 翌月
     const totalPlaced = startDay + totalDays;
     const remaining = (7 - (totalPlaced % 7)) % 7;
     for (let i = 1; i <= remaining; i++) {
@@ -431,6 +447,7 @@
     const statusFlags = document.createElement("div");
     statusFlags.className = "status-flags";
 
+    // 重要（！）チェック
     const impLabel = document.createElement("label");
     impLabel.title = "重要日";
     const impCheck = document.createElement("input");
@@ -448,6 +465,7 @@
     impLabel.appendChild(impCheck);
     impLabel.appendChild(impText);
 
+    // 午前休チェック
     const amLabel = document.createElement("label");
     amLabel.title = "午前休";
     const amCheck = document.createElement("input");
@@ -462,6 +480,7 @@
     amLabel.appendChild(amCheck);
     amLabel.appendChild(document.createTextNode("前"));
 
+    // 午後休チェック
     const pmLabel = document.createElement("label");
     pmLabel.title = "午後休";
     const pmCheck = document.createElement("input");
@@ -480,6 +499,7 @@
     statusFlags.appendChild(amLabel);
     statusFlags.appendChild(pmLabel);
 
+    // 退勤丸数字
     const timeSelect = document.createElement("select");
     timeSelect.className = "leave-time-select";
     const emptyOpt = document.createElement("option");
@@ -507,6 +527,7 @@
     header.appendChild(statusGroup);
     cell.appendChild(header);
 
+    // 予定入力枠（4行）
     const eventsList = document.createElement("div");
     eventsList.className = "events-list";
 
@@ -517,16 +538,12 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      input.addEventListener("input", () => {
+      // 入力完了（フォーカス外れまたはEnter確定）で確実に1回保存
+      input.addEventListener("change", () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
-        dayData.events[i] = input.value;
+        dayData.events[i] = input.value.trim();
         saveStorage();
-
-        clearTimeout(saveTimerMap[dateKey]);
-        setSyncStatus(true, "保存中...");
-        saveTimerMap[dateKey] = setTimeout(() => {
-          sendToCloud(dateKey);
-        }, 700);
+        sendToCloud(dateKey);
       });
 
       eventsList.appendChild(input);
@@ -555,7 +572,7 @@
     fetchCloudData();
   });
 
-  // 起動処理
+  // 起動シーケンス
   document.getElementById("appVersion").textContent = APP_VERSION;
   memoryData = loadStorage();
   renderCalendar();
