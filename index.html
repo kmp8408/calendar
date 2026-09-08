@@ -286,7 +286,7 @@
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
-        <span id="syncText">同期完了</span>
+        <span id="syncText">同期準備完了</span>
       </div>
     </div>
     <div class="nav-buttons">
@@ -309,14 +309,14 @@
 </div>
 
 <script>
-  // ⚙️ 設定：ご提示のGAS WebアプリURLを組み込み済み
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyS8wZ5NW_8PrpkLvVvEQVFL9Fnmts-nxaCkPQrFONucMjmvhe3-Yi1IXNowUxNylvF/exec";
 
   let currentYear = new Date().getFullYear();
   let currentMonth = new Date().getMonth();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v2";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v3";
 
+  // キャッシュ読込
   function loadLocalData() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -326,18 +326,21 @@
     }
   }
 
+  // キャッシュ保存
   function saveLocalData(data) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {}
   }
 
+  // 日付キー生成（YYYY-MM-DD）
   function formatDateKey(year, month, day) {
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
     return `${year}-${m}-${d}`;
   }
 
+  // ステータス表示
   function setSyncStatus(isSyncing, text) {
     const wrapper = document.getElementById("syncStatus");
     const label = document.getElementById("syncText");
@@ -349,36 +352,48 @@
     label.textContent = text;
   }
 
-  // クラウドからデータ取得（JSONP方式）
+  // クラウドからデータ取得（JSONP方式：キャッシュ無効化パラメータ付き）
   function fetchCloudData() {
     if (!GAS_API_URL || !GAS_API_URL.endsWith("/exec")) {
-      setSyncStatus(false, "ローカル動作中（URL要確認）");
+      setSyncStatus(false, "ローカル動作中");
       return;
     }
     setSyncStatus(true, "同期中...");
 
     const callbackName = "cb_" + Date.now();
+    const script = document.createElement("script");
+
     window[callbackName] = function(cloudData) {
+      console.log("クラウド取得データ:", cloudData);
+      
+      // クラウドのデータを最優先でローカルキャッシュへ上書き反映
       const local = loadLocalData();
       const merged = { ...local, ...cloudData };
       saveLocalData(merged);
+      
+      // 画面再描画
       renderCalendar();
       setSyncStatus(false, "同期完了");
+      
+      // 後片付け
       delete window[callbackName];
-      document.body.removeChild(script);
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
     };
 
-    const script = document.createElement("script");
-    script.src = `${GAS_API_URL}?callback=${callbackName}&_=${Date.now()}`;
+    script.src = `${GAS_API_URL}?callback=${callbackName}&t=${Date.now()}`;
     script.onerror = function() {
-      setSyncStatus(false, "同期エラー（キャッシュ表示）");
+      setSyncStatus(false, "同期エラー（再試行してください）");
       delete window[callbackName];
-      document.body.removeChild(script);
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
     };
     document.body.appendChild(script);
   }
 
-  // クラウドへデータ送信（no-cors POST方式）
+  // クラウドへデータ送信（no-cors POST）
   function sendToCloud(dateKey, dayData) {
     if (!GAS_API_URL || !GAS_API_URL.endsWith("/exec")) return;
 
@@ -471,7 +486,7 @@
     const statusFlags = document.createElement("div");
     statusFlags.className = "status-flags";
 
-    // 🌟 重要マーク（！）チェックボックス
+    // 1. 重要マーク（！）チェックボックス
     const impLabel = document.createElement("label");
     impLabel.title = "重要日（太枠表示）";
     const impCheck = document.createElement("input");
@@ -488,7 +503,7 @@
     impLabel.appendChild(impCheck);
     impLabel.appendChild(impText);
 
-    // 午前休チェックボックス
+    // 2. 午前休チェックボックス
     const amLabel = document.createElement("label");
     amLabel.title = "午前休";
     const amCheck = document.createElement("input");
@@ -502,7 +517,7 @@
     amLabel.appendChild(amCheck);
     amLabel.appendChild(document.createTextNode("前"));
 
-    // 午後休チェックボックス
+    // 3. 午後休チェックボックス
     const pmLabel = document.createElement("label");
     pmLabel.title = "午後休";
     const pmCheck = document.createElement("input");
@@ -607,6 +622,7 @@
     fetchCloudData();
   });
 
+  // 初回描画＆クラウド取得
   renderCalendar();
   fetchCloudData();
 </script>
