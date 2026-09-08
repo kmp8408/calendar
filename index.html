@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>シンプル月間カレンダー (クラウド同期版)</title>
+  <style>
+    :root {
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --border-color: #d1d5db;
+      --text-main: #1f2937;
+      --text-sub: #4b5563;
+      --sunday-color: #dc2626;
+      --saturday-color: #2563eb;
+      --today-bg: #eff6ff;
+      --off-bg-red: rgba(254, 226, 226, 0.55); 
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 12px;
+      user-select: none;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      padding: 12px;
+    }
+
+    /* ヘッダー・操作部 */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    button {
+      padding: 6px 12px;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text-main);
+      transition: background 0.15s;
+    }
+
+    button:hover {
+      background: #f3f4f6;
+    }
+
+    .current-month-display {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    /* 同期ステータス表示 */
+    .sync-status {
+      font-size: 0.8rem;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .sync-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981; /* 正常時：緑 */
+    }
+    .syncing .sync-indicator {
+      background: #f59e0b; /* 同期中：黄 */
+    }
+
+    /* カレンダーグリッド */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      border-top: 1px solid var(--border-color);
+      border-left: 1px solid var(--border-color);
+    }
+
+    /* 曜日ヘッダー */
+    .weekday-header {
+      background: #f3f4f6;
+      text-align: center;
+      padding: 6px 0;
+      font-weight: 700;
+      font-size: 0.85rem;
+      border-right: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+    }
+    .weekday-sun { color: var(--sunday-color); }
+    .weekday-sat { color: var(--saturday-color); }
+
+    /* 各日のセル */
+    .day-cell {
+      min-height: 130px;
+      border-right: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      transition: background 0.1s;
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+    }
+
+    .day-cell.other-month {
+      background: #fafafa;
+      opacity: 0.4;
+    }
+
+    .day-cell.today {
+      background-color: var(--today-bg);
+      border: 2px solid #3b82f6;
+    }
+
+    /* 休み背景グラデーション */
+    .day-cell.am-off {
+      background-image: linear-gradient(to bottom, var(--off-bg-red) 50%, rgba(255,255,255,0) 50%);
+    }
+    .day-cell.pm-off {
+      background-image: linear-gradient(to bottom, rgba(255,255,255,0) 50%, var(--off-bg-red) 50%);
+    }
+    .day-cell.am-off.pm-off {
+      background-image: none;
+      background-color: var(--off-bg-red);
+    }
+
+    /* 日セル上部ヘッダー */
+    .day-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      font-size: 0.85rem;
+      position: relative; 
+      z-index: 1; 
+    }
+
+    .day-number {
+      font-weight: 700;
+      font-size: 0.95rem;
+      min-width: 20px;
+    }
+    .sun .day-number { color: var(--sunday-color); }
+    .sat .day-number { color: var(--saturday-color); }
+
+    .day-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 休みチェックボックス */
+    .leave-flags {
+      display: flex;
+      gap: 2px;
+      background: rgba(243, 244, 246, 0.85);
+      padding: 1px 3px;
+      border-radius: 3px;
+      font-size: 0.7rem;
+    }
+
+    .leave-flags label {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 1px;
+    }
+
+    .leave-flags input[type="checkbox"] {
+      cursor: pointer;
+      width: 12px;
+      height: 12px;
+    }
+
+    /* 丸数字（退勤時間）セレクト */
+    .leave-time-select {
+      font-size: 0.85rem;
+      font-weight: 700;
+      border: 1px solid #d1d5db;
+      border-radius: 3px;
+      padding: 0 1px;
+      background: #fff;
+      color: #1f2937;
+      cursor: pointer;
+      outline: none;
+      height: 20px;
+    }
+
+    /* 予定入力リスト（4行） */
+    .events-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex-grow: 1;
+      position: relative;
+      z-index: 1;
+    }
+
+    .event-input {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      padding: 2px 3px;
+      font-size: 0.78rem;
+      background: rgba(249, 250, 251, 0.75);
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    .event-input:hover {
+      background: rgba(243, 244, 246, 0.85);
+      border-color: #e5e7eb;
+    }
+
+    .event-input:focus {
+      background: #ffffff;
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 1px #60a5fa;
+    }
+
+    .event-input::placeholder {
+      color: #9ca3af;
+      font-size: 0.7rem;
+    }
+
+    /* スマホ向け調整 */
+    @media (max-width: 600px) {
+      body { padding: 4px; }
+      .container { padding: 6px; }
+      .day-cell { min-height: 95px; padding: 2px; }
+      .day-number { font-size: 0.85rem; }
+      .leave-flags { font-size: 0.65rem; }
+      .event-input { font-size: 0.7rem; padding: 1px 2px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div style="display:flex; align-items:center; gap: 12px;">
+      <div class="current-month-display" id="monthDisplay">----年 --月</div>
+      <div class="sync-status" id="syncStatus">
+        <div class="sync-indicator"></div>
+        <span id="syncText">同期完了</span>
+      </div>
+    </div>
+    <div class="nav-buttons">
+      <button id="prevMonthBtn">◀ 前月</button>
+      <button id="todayBtn">今月</button>
+      <button id="nextMonthBtn">翌月 ▶</button>
+      <button id="refreshBtn" title="クラウドから最新データを再取得">🔄 更新</button>
+    </div>
+  </header>
+
+  <div class="calendar-grid" id="calendarGrid">
+    <div class="weekday-header weekday-sun">日</div>
+    <div class="weekday-header">月</div>
+    <div class="weekday-header">火</div>
+    <div class="weekday-header">水</div>
+    <div class="weekday-header">木</div>
+    <div class="weekday-header">金</div>
+    <div class="weekday-header weekday-sat">土</div>
+  </div>
+</div>
+
+<script>
+  // ⚙️ 設定：ここに発行されたGASのURLを貼り付けてください
+  const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyS8wZ5NW_8PrpkLvVvEQVFL9Fnmts-nxaCkPQrFONucMjmvhe3-Yi1IXNowUxNylvF/exec";
+
+  let currentYear = new Date().getFullYear();
+  let currentMonth = new Date().getMonth();
+  const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v1";
+
+  // キャッシュ読込・保存
+  function loadLocalData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveLocalData(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  function formatDateKey(year, month, day) {
+    const m = String(month + 1).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
+    return `${year}-${m}-${d}`;
+  }
+
+  // ステータス表示切り替え
+  function setSyncStatus(isSyncing, text) {
+    const wrapper = document.getElementById("syncStatus");
+    const label = document.getElementById("syncText");
+    if (isSyncing) {
+      wrapper.classList.add("syncing");
+    } else {
+      wrapper.classList.remove("syncing");
+    }
+    label.textContent = text;
+  }
+
+  // クラウドからデータ取得（JSONP方式）
+  function fetchCloudData() {
+    if (!GAS_API_URL || GAS_API_URL.includes("ここにGAS")) {
+      setSyncStatus(false, "ローカル動作中（URL未設定）");
+      return;
+    }
+    setSyncStatus(true, "データ同期中...");
+
+    const callbackName = "cb_" + Date.now();
+    window[callbackName] = function(cloudData) {
+      // ローカルデータとマージして保存
+      const local = loadLocalData();
+      const merged = { ...local, ...cloudData };
+      saveLocalData(merged);
+      renderCalendar();
+      setSyncStatus(false, "同期完了");
+      delete window[callbackName];
+      document.body.removeChild(script);
+    };
+
+    const script = document.createElement("script");
+    script.src = `${GAS_API_URL}?callback=${callbackName}&_=${Date.now()}`;
+    script.onerror = function() {
+      setSyncStatus(false, "同期エラー（キャッシュ表示中）");
+      delete window[callbackName];
+      document.body.removeChild(script);
+    };
+    document.body.appendChild(script);
+  }
+
+  // クラウドへデータ送信（no-cors POST方式）
+  function sendToCloud(dateKey, dayData) {
+    if (!GAS_API_URL || GAS_API_URL.includes("ここにGAS")) return;
+
+    setSyncStatus(true, "保存中...");
+    const payload = {
+      date: dateKey,
+      amOff: dayData.amOff,
+      pmOff: dayData.pmOff,
+      exitTime: dayData.exitTime,
+      events: dayData.events
+    };
+
+    fetch(GAS_API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(payload)
+    }).then(() => {
+      setSyncStatus(false, "保存完了");
+    }).catch(err => {
+      console.error("送信エラー:", err);
+      setSyncStatus(false, "保存失敗（端末に保持）");
+    });
+  }
+
+  // カレンダー描画
+  function renderCalendar() {
+    const data = loadLocalData();
+    const grid = document.getElementById("calendarGrid");
+
+    while (grid.children.length > 7) {
+      grid.removeChild(grid.lastChild);
+    }
+
+    document.getElementById("monthDisplay").textContent = `${currentYear}年 ${currentMonth + 1}月`;
+
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const startDayOfWeek = firstDay.getDay();
+    const totalDays = lastDay.getDate();
+
+    // 前月末
+    const prevLastDay = new Date(currentYear, currentMonth, 0).getDate();
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const dayNum = prevLastDay - i;
+      const prevDate = new Date(currentYear, currentMonth - 1, dayNum);
+      const cell = createDayCell(prevDate.getFullYear(), prevDate.getMonth(), dayNum, true, data);
+      grid.appendChild(cell);
+    }
+
+    // 当月
+    const today = new Date();
+    for (let day = 1; day <= totalDays; day++) {
+      const isToday = (today.getFullYear() === currentYear && today.getMonth() === currentMonth && today.getDate() === day);
+      const cell = createDayCell(currentYear, currentMonth, day, false, data, isToday);
+      grid.appendChild(cell);
+    }
+
+    // 翌月初
+    const remainingCells = (7 - ((startDayOfWeek + totalDays) % 7)) % 7;
+    for (let day = 1; day <= remainingCells; day++) {
+      const nextDate = new Date(currentYear, currentMonth + 1, day);
+      const cell = createDayCell(nextDate.getFullYear(), nextDate.getMonth(), day, true, data);
+      grid.appendChild(cell);
+    }
+  }
+
+  // 単一日セル作成
+  function createDayCell(year, month, day, isOtherMonth, allData, isToday = false) {
+    const dateKey = formatDateKey(year, month, day);
+    const dayData = allData[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""] };
+
+    const dateObj = new Date(year, month, day);
+    const dayOfWeek = dateObj.getDay();
+
+    const cell = document.createElement("div");
+    cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${dayOfWeek === 0 ? 'sun' : ''} ${dayOfWeek === 6 ? 'sat' : ''} ${dayData.amOff ? 'am-off' : ''} ${dayData.pmOff ? 'pm-off' : ''}`;
+
+    const header = document.createElement("div");
+    header.className = "day-header";
+
+    const dayNumber = document.createElement("span");
+    dayNumber.className = "day-number";
+    dayNumber.textContent = day;
+
+    const statusGroup = document.createElement("div");
+    statusGroup.className = "day-status";
+
+    const leaveFlags = document.createElement("div");
+    leaveFlags.className = "leave-flags";
+
+    // 午前休チェック
+    const amLabel = document.createElement("label");
+    const amCheck = document.createElement("input");
+    amCheck.type = "checkbox";
+    amCheck.checked = !!dayData.amOff;
+    amCheck.addEventListener("change", () => {
+      const updated = updateDayData(dateKey, { amOff: amCheck.checked });
+      amCheck.checked ? cell.classList.add('am-off') : cell.classList.remove('am-off');
+      sendToCloud(dateKey, updated);
+    });
+    amLabel.appendChild(amCheck);
+    amLabel.appendChild(document.createTextNode("前"));
+
+    // 午後休チェック
+    const pmLabel = document.createElement("label");
+    const pmCheck = document.createElement("input");
+    pmCheck.type = "checkbox";
+    pmCheck.checked = !!dayData.pmOff;
+    pmCheck.addEventListener("change", () => {
+      const updated = updateDayData(dateKey, { pmOff: pmCheck.checked });
+      pmCheck.checked ? cell.classList.add('pm-off') : cell.classList.remove('pm-off');
+      sendToCloud(dateKey, updated);
+    });
+    pmLabel.appendChild(pmCheck);
+    pmLabel.appendChild(document.createTextNode("後"));
+
+    leaveFlags.appendChild(amLabel);
+    leaveFlags.appendChild(pmLabel);
+
+    // 退勤丸数字セレクト
+    const timeSelect = document.createElement("select");
+    timeSelect.className = "leave-time-select";
+
+    const emptyOpt = document.createElement("option");
+    emptyOpt.value = "";
+    emptyOpt.textContent = "—";
+    timeSelect.appendChild(emptyOpt);
+
+    for (let n = 1; n <= 9; n++) {
+      const opt = document.createElement("option");
+      opt.value = CIRCLED_NUMBERS[n];
+      opt.textContent = CIRCLED_NUMBERS[n];
+      if (dayData.exitTime === CIRCLED_NUMBERS[n]) opt.selected = true;
+      timeSelect.appendChild(opt);
+    }
+
+    timeSelect.addEventListener("change", () => {
+      const updated = updateDayData(dateKey, { exitTime: timeSelect.value });
+      sendToCloud(dateKey, updated);
+    });
+
+    statusGroup.appendChild(leaveFlags);
+    statusGroup.appendChild(timeSelect);
+    header.appendChild(dayNumber);
+    header.appendChild(statusGroup);
+    cell.appendChild(header);
+
+    // 4件分の予定入力
+    const eventsList = document.createElement("div");
+    eventsList.className = "events-list";
+
+    for (let i = 0; i < 4; i++) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "event-input";
+      input.placeholder = `予定 ${i + 1}`;
+      input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
+
+      input.addEventListener("change", () => {
+        const currentData = loadLocalData()[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""] };
+        const newEvents = [...(currentData.events || ["", "", "", ""])];
+        newEvents[i] = input.value.trim();
+        const updated = updateDayData(dateKey, { events: newEvents });
+        sendToCloud(dateKey, updated);
+      });
+
+      eventsList.appendChild(input);
+    }
+
+    cell.appendChild(eventsList);
+    return cell;
+  }
+
+  function updateDayData(dateKey, diff) {
+    const data = loadLocalData();
+    if (!data[dateKey]) {
+      data[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""] };
+    }
+    data[dateKey] = { ...data[dateKey], ...diff };
+    saveLocalData(data);
+    return data[dateKey];
+  }
+
+  // 操作イベント
+  document.getElementById("prevMonthBtn").addEventListener("click", () => {
+    currentMonth--;
+    if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+    renderCalendar();
+  });
+
+  document.getElementById("nextMonthBtn").addEventListener("click", () => {
+    currentMonth++;
+    if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+    renderCalendar();
+  });
+
+  document.getElementById("todayBtn").addEventListener("click", () => {
+    const now = new Date();
+    currentYear = now.getFullYear();
+    currentMonth = now.getMonth();
+    renderCalendar();
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", () => {
+    fetchCloudData();
+  });
+
+  // 初期表示＆クラウド同期開始
+  renderCalendar();
+  fetchCloudData();
+</script>
+</body>
+</html>
