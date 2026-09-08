@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.3 -->
-      <span class="app-version" id="appVersion">v1.0.3</span>
+      <!-- 🏷️ バージョン v1.0.4 -->
+      <span class="app-version" id="appVersion">v1.0.4</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,14 +266,14 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.3";
+  const APP_VERSION = "v1.0.4";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v103";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v104";
 
   let memoryData = {};
-  let isSavingToCloud = false;
+  let saveTimerMap = {};
 
   function toKey(d) {
     const year = d.getFullYear();
@@ -303,14 +303,34 @@
     label.textContent = text;
   }
 
-  // 🛡️ クラウドからデータ取得（手元データを保護するスマートマージ）
-  function fetchCloudData() {
-    if (isSavingToCloud) {
-      // 保存通信中なら、保存完了を待つ
-      setTimeout(fetchCloudData, 500);
-      return;
-    }
+  // 📱 画面の全入力枠から強制吸い上げ（スマホのフォーカス残存対策）
+  function flushAllInputsToMemory() {
+    document.querySelectorAll(".day-cell").forEach(cell => {
+      const dateKey = cell.dataset.dateKey;
+      if (!dateKey) return;
+      if (!memoryData[dateKey]) {
+        memoryData[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
+      }
+      const inputs = cell.querySelectorAll(".event-input");
+      let changed = false;
+      inputs.forEach((inp, idx) => {
+        const val = inp.value.trim();
+        if (memoryData[dateKey].events[idx] !== val) {
+          memoryData[dateKey].events[idx] = val;
+          changed = true;
+        }
+      });
+      if (changed) {
+        sendToCloud(dateKey);
+      }
+    });
+    saveStorage();
+  }
 
+  // クラウドからデータ取得
+  function fetchCloudData() {
+    // 取得前にスマホで入力途中の文字を吸い上げて送信
+    flushAllInputsToMemory();
     setSyncStatus(true, "データ取得中...");
 
     const cbName = "cb_" + Math.floor(Math.random() * 10000000);
@@ -326,7 +346,6 @@
           if (!memoryData[cleanKey]) {
             memoryData[cleanKey] = item;
           } else {
-            // クラウドから届いた値でマージ（手元の文字を空白で消さない）
             if (item.events) {
               if (!memoryData[cleanKey].events) memoryData[cleanKey].events = ["", "", "", ""];
               for (let i = 0; i < 4; i++) {
@@ -360,7 +379,6 @@
 
   // クラウド保存（POST）
   function sendToCloud(dateKey) {
-    isSavingToCloud = true;
     setSyncStatus(true, "保存中...");
     const dayData = memoryData[dateKey] || {};
 
@@ -379,10 +397,8 @@
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(payload)
     }).then(() => {
-      isSavingToCloud = false;
       setSyncStatus(false, "保存完了");
     }).catch(() => {
-      isSavingToCloud = false;
       setSyncStatus(false, "端末に保存済");
     });
   }
@@ -543,12 +559,35 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      // フォーカス外れ（またはEnter）で手元に確定してクラウドへ送信
-      input.addEventListener("change", () => {
+      // 📱 モバイル対応：入力値の同期関数
+      const syncInputVal = (isImmediateCloudSend = false) => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
         dayData.events[i] = input.value.trim();
         saveStorage();
-        sendToCloud(dateKey);
+        if (isImmediateCloudSend) {
+          sendToCloud(dateKey);
+        }
+      };
+
+      // 1文字入力ごと（メモリ保存＋入力休止後の自動送信）
+      input.addEventListener("input", () => {
+        syncInputVal(false);
+        clearTimeout(saveTimerMap[dateKey]);
+        setSyncStatus(true, "入力中...");
+        saveTimerMap[dateKey] = setTimeout(() => {
+          sendToCloud(dateKey);
+        }, 1200);
+      });
+
+      // 確定時（Enter・キーボード閉じ・タップ外れ）
+      input.addEventListener("change", () => {
+        clearTimeout(saveTimerMap[dateKey]);
+        syncInputVal(true);
+      });
+
+      input.addEventListener("blur", () => {
+        clearTimeout(saveTimerMap[dateKey]);
+        syncInputVal(true);
       });
 
       eventsList.appendChild(input);
@@ -559,21 +598,28 @@
   }
 
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
+    flushAllInputsToMemory();
     displayDate.setMonth(displayDate.getMonth() - 1);
     renderCalendar();
   });
 
   document.getElementById("nextMonthBtn").addEventListener("click", () => {
+    flushAllInputsToMemory();
     displayDate.setMonth(displayDate.getMonth() + 1);
     renderCalendar();
   });
 
   document.getElementById("todayBtn").addEventListener("click", () => {
+    flushAllInputsToMemory();
     displayDate = new Date();
     renderCalendar();
   });
 
   document.getElementById("refreshBtn").addEventListener("click", () => {
+    // 📱 キーボードが開いている場合はアクティブ要素を強制フォーカス解除
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
     fetchCloudData();
   });
 
