@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>シンプル月間カレンダー (クラウド同期版)</title>
+  <title>シンプル月間カレンダー</title>
   <style>
     :root {
       --bg-color: #f8f9fa;
@@ -14,7 +14,8 @@
       --sunday-color: #dc2626;
       --saturday-color: #2563eb;
       --today-bg: #eff6ff;
-      --off-bg-red: rgba(254, 226, 226, 0.55); 
+      --off-bg-red: rgba(254, 226, 226, 0.55);
+      --important-border: #ef4444; /* 重要日の太枠カラー */
     }
 
     * {
@@ -40,7 +41,7 @@
       padding: 12px;
     }
 
-    /* ヘッダー・操作部 */
+    /* ヘッダー操作部 */
     header {
       display: flex;
       justify-content: space-between;
@@ -78,7 +79,7 @@
       letter-spacing: 0.05em;
     }
 
-    /* 同期ステータス表示 */
+    /* 同期ステータス */
     .sync-status {
       font-size: 0.8rem;
       color: #6b7280;
@@ -90,10 +91,10 @@
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #10b981; /* 正常時：緑 */
+      background: #10b981;
     }
     .syncing .sync-indicator {
-      background: #f59e0b; /* 同期中：黄 */
+      background: #f59e0b;
     }
 
     /* カレンダーグリッド */
@@ -104,7 +105,6 @@
       border-left: 1px solid var(--border-color);
     }
 
-    /* 曜日ヘッダー */
     .weekday-header {
       background: #f3f4f6;
       text-align: center;
@@ -129,6 +129,7 @@
       transition: background 0.1s;
       background-size: 100% 100%;
       background-repeat: no-repeat;
+      position: relative;
     }
 
     .day-cell.other-month {
@@ -139,6 +140,13 @@
     .day-cell.today {
       background-color: var(--today-bg);
       border: 2px solid #3b82f6;
+    }
+
+    /* 🌟 重要日の強調スタイル（目立つ太枠＋内側シャドウ） */
+    .day-cell.important-day {
+      border: 2.5px solid var(--important-border) !important;
+      box-shadow: inset 0 0 0 1px #fecaca;
+      z-index: 2;
     }
 
     /* 休み背景グラデーション */
@@ -161,7 +169,7 @@
       margin-bottom: 4px;
       font-size: 0.85rem;
       position: relative; 
-      z-index: 1; 
+      z-index: 3; 
     }
 
     .day-number {
@@ -175,33 +183,40 @@
     .day-status {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
     }
 
-    /* 休みチェックボックス */
-    .leave-flags {
+    /* チェックボックスグループ（！／前／後） */
+    .status-flags {
       display: flex;
-      gap: 2px;
+      gap: 3px;
       background: rgba(243, 244, 246, 0.85);
       padding: 1px 3px;
       border-radius: 3px;
-      font-size: 0.7rem;
+      font-size: 0.72rem;
     }
 
-    .leave-flags label {
+    .status-flags label {
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 1px;
     }
 
-    .leave-flags input[type="checkbox"] {
+    .status-flags input[type="checkbox"] {
       cursor: pointer;
       width: 12px;
       height: 12px;
     }
 
-    /* 丸数字（退勤時間）セレクト */
+    /* ！マークの強調表示 */
+    .mark-important {
+      color: #dc2626;
+      font-weight: 900;
+      font-size: 0.8rem;
+    }
+
+    /* 退勤丸数字セレクト */
     .leave-time-select {
       font-size: 0.85rem;
       font-weight: 700;
@@ -222,7 +237,7 @@
       gap: 2px;
       flex-grow: 1;
       position: relative;
-      z-index: 1;
+      z-index: 3;
     }
 
     .event-input {
@@ -253,13 +268,12 @@
       font-size: 0.7rem;
     }
 
-    /* スマホ向け調整 */
     @media (max-width: 600px) {
       body { padding: 4px; }
       .container { padding: 6px; }
       .day-cell { min-height: 95px; padding: 2px; }
       .day-number { font-size: 0.85rem; }
-      .leave-flags { font-size: 0.65rem; }
+      .status-flags { font-size: 0.65rem; gap: 2px; padding: 1px 2px; }
       .event-input { font-size: 0.7rem; padding: 1px 2px; }
     }
   </style>
@@ -295,15 +309,14 @@
 </div>
 
 <script>
-  // ⚙️ 設定：ここに発行されたGASのURLを貼り付けてください
+  // ⚙️ 設定：ご提示のGAS WebアプリURLを組み込み済み
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyS8wZ5NW_8PrpkLvVvEQVFL9Fnmts-nxaCkPQrFONucMjmvhe3-Yi1IXNowUxNylvF/exec";
 
   let currentYear = new Date().getFullYear();
   let currentMonth = new Date().getMonth();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v1";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v2";
 
-  // キャッシュ読込・保存
   function loadLocalData() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -325,7 +338,6 @@
     return `${year}-${m}-${d}`;
   }
 
-  // ステータス表示切り替え
   function setSyncStatus(isSyncing, text) {
     const wrapper = document.getElementById("syncStatus");
     const label = document.getElementById("syncText");
@@ -339,15 +351,14 @@
 
   // クラウドからデータ取得（JSONP方式）
   function fetchCloudData() {
-    if (!GAS_API_URL || GAS_API_URL.includes("ここにGAS")) {
-      setSyncStatus(false, "ローカル動作中（URL未設定）");
+    if (!GAS_API_URL || !GAS_API_URL.endsWith("/exec")) {
+      setSyncStatus(false, "ローカル動作中（URL要確認）");
       return;
     }
-    setSyncStatus(true, "データ同期中...");
+    setSyncStatus(true, "同期中...");
 
     const callbackName = "cb_" + Date.now();
     window[callbackName] = function(cloudData) {
-      // ローカルデータとマージして保存
       const local = loadLocalData();
       const merged = { ...local, ...cloudData };
       saveLocalData(merged);
@@ -360,7 +371,7 @@
     const script = document.createElement("script");
     script.src = `${GAS_API_URL}?callback=${callbackName}&_=${Date.now()}`;
     script.onerror = function() {
-      setSyncStatus(false, "同期エラー（キャッシュ表示中）");
+      setSyncStatus(false, "同期エラー（キャッシュ表示）");
       delete window[callbackName];
       document.body.removeChild(script);
     };
@@ -369,7 +380,7 @@
 
   // クラウドへデータ送信（no-cors POST方式）
   function sendToCloud(dateKey, dayData) {
-    if (!GAS_API_URL || GAS_API_URL.includes("ここにGAS")) return;
+    if (!GAS_API_URL || !GAS_API_URL.endsWith("/exec")) return;
 
     setSyncStatus(true, "保存中...");
     const payload = {
@@ -377,7 +388,8 @@
       amOff: dayData.amOff,
       pmOff: dayData.pmOff,
       exitTime: dayData.exitTime,
-      events: dayData.events
+      events: dayData.events,
+      isImportant: dayData.isImportant
     };
 
     fetch(GAS_API_URL, {
@@ -389,7 +401,7 @@
       setSyncStatus(false, "保存完了");
     }).catch(err => {
       console.error("送信エラー:", err);
-      setSyncStatus(false, "保存失敗（端末に保持）");
+      setSyncStatus(false, "保存失敗");
     });
   }
 
@@ -438,13 +450,13 @@
   // 単一日セル作成
   function createDayCell(year, month, day, isOtherMonth, allData, isToday = false) {
     const dateKey = formatDateKey(year, month, day);
-    const dayData = allData[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""] };
+    const dayData = allData[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
 
     const dateObj = new Date(year, month, day);
     const dayOfWeek = dateObj.getDay();
 
     const cell = document.createElement("div");
-    cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${dayOfWeek === 0 ? 'sun' : ''} ${dayOfWeek === 6 ? 'sat' : ''} ${dayData.amOff ? 'am-off' : ''} ${dayData.pmOff ? 'pm-off' : ''}`;
+    cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${dayOfWeek === 0 ? 'sun' : ''} ${dayOfWeek === 6 ? 'sat' : ''} ${dayData.amOff ? 'am-off' : ''} ${dayData.pmOff ? 'pm-off' : ''} ${dayData.isImportant ? 'important-day' : ''}`;
 
     const header = document.createElement("div");
     header.className = "day-header";
@@ -456,11 +468,29 @@
     const statusGroup = document.createElement("div");
     statusGroup.className = "day-status";
 
-    const leaveFlags = document.createElement("div");
-    leaveFlags.className = "leave-flags";
+    const statusFlags = document.createElement("div");
+    statusFlags.className = "status-flags";
 
-    // 午前休チェック
+    // 🌟 重要マーク（！）チェックボックス
+    const impLabel = document.createElement("label");
+    impLabel.title = "重要日（太枠表示）";
+    const impCheck = document.createElement("input");
+    impCheck.type = "checkbox";
+    impCheck.checked = !!dayData.isImportant;
+    impCheck.addEventListener("change", () => {
+      const updated = updateDayData(dateKey, { isImportant: impCheck.checked });
+      impCheck.checked ? cell.classList.add('important-day') : cell.classList.remove('important-day');
+      sendToCloud(dateKey, updated);
+    });
+    const impText = document.createElement("span");
+    impText.className = "mark-important";
+    impText.textContent = "!";
+    impLabel.appendChild(impCheck);
+    impLabel.appendChild(impText);
+
+    // 午前休チェックボックス
     const amLabel = document.createElement("label");
+    amLabel.title = "午前休";
     const amCheck = document.createElement("input");
     amCheck.type = "checkbox";
     amCheck.checked = !!dayData.amOff;
@@ -472,8 +502,9 @@
     amLabel.appendChild(amCheck);
     amLabel.appendChild(document.createTextNode("前"));
 
-    // 午後休チェック
+    // 午後休チェックボックス
     const pmLabel = document.createElement("label");
+    pmLabel.title = "午後休";
     const pmCheck = document.createElement("input");
     pmCheck.type = "checkbox";
     pmCheck.checked = !!dayData.pmOff;
@@ -485,8 +516,9 @@
     pmLabel.appendChild(pmCheck);
     pmLabel.appendChild(document.createTextNode("後"));
 
-    leaveFlags.appendChild(amLabel);
-    leaveFlags.appendChild(pmLabel);
+    statusFlags.appendChild(impLabel);
+    statusFlags.appendChild(amLabel);
+    statusFlags.appendChild(pmLabel);
 
     // 退勤丸数字セレクト
     const timeSelect = document.createElement("select");
@@ -510,13 +542,13 @@
       sendToCloud(dateKey, updated);
     });
 
-    statusGroup.appendChild(leaveFlags);
+    statusGroup.appendChild(statusFlags);
     statusGroup.appendChild(timeSelect);
     header.appendChild(dayNumber);
     header.appendChild(statusGroup);
     cell.appendChild(header);
 
-    // 4件分の予定入力
+    // 予定入力枠（4行）
     const eventsList = document.createElement("div");
     eventsList.className = "events-list";
 
@@ -528,7 +560,7 @@
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
       input.addEventListener("change", () => {
-        const currentData = loadLocalData()[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""] };
+        const currentData = loadLocalData()[dateKey] || { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
         const newEvents = [...(currentData.events || ["", "", "", ""])];
         newEvents[i] = input.value.trim();
         const updated = updateDayData(dateKey, { events: newEvents });
@@ -545,14 +577,13 @@
   function updateDayData(dateKey, diff) {
     const data = loadLocalData();
     if (!data[dateKey]) {
-      data[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""] };
+      data[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
     }
     data[dateKey] = { ...data[dateKey], ...diff };
     saveLocalData(data);
     return data[dateKey];
   }
 
-  // 操作イベント
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
     currentMonth--;
     if (currentMonth < 0) { currentMonth = 11; currentYear--; }
@@ -576,7 +607,6 @@
     fetchCloudData();
   });
 
-  // 初期表示＆クラウド同期開始
   renderCalendar();
   fetchCloudData();
 </script>
