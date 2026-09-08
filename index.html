@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.9 -->
-      <span class="app-version" id="appVersion">v1.0.9</span>
+      <!-- 🏷️ バージョン v1.1.0 -->
+      <span class="app-version" id="appVersion">v1.1.0</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,11 +266,11 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.9";
+  const APP_VERSION = "v1.1.0";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v109";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v110";
 
   let memoryData = {};
   let isSaving = false;
@@ -303,7 +303,7 @@
     label.textContent = text;
   }
 
-  // クラウド保存（資格情報の除外と安全な非同期送信）
+  // クラウド保存（資格情報除外のプレーン非同期POST）
   async function sendToCloud(dateKey) {
     isSaving = true;
     setSyncStatus(true, "保存中...");
@@ -334,7 +334,7 @@
     }
   }
 
-  // クラウドからデータ取得（JSONP：CORS強制属性を排除した標準接続）
+  // クラウドからデータ取得（JSONP：クラウドを絶対基準とする完全同期）
   function fetchCloudData() {
     setSyncStatus(true, "データ取得中...");
 
@@ -342,7 +342,6 @@
     const script = document.createElement("script");
     let isCompleted = false;
 
-    // 15秒の通信タイムアウト制御
     const timer = setTimeout(() => {
       if (!isCompleted) {
         isCompleted = true;
@@ -362,26 +361,27 @@
       clearTimeout(timer);
 
       if (cloudData && typeof cloudData === "object") {
+        // 🌟 クラウドのデータを正として完全に再構築（シートから消えたデータは綺麗に消去される）
+        const nextMemoryData = {};
         for (const k in cloudData) {
           const item = cloudData[k];
           const parts = k.split(/[\/\-]/);
           const cleanKey = parts.length === 3 ? `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}` : k;
 
-          if (!memoryData[cleanKey]) {
-            memoryData[cleanKey] = item;
-          } else {
-            if (item.events) {
-              if (!memoryData[cleanKey].events) memoryData[cleanKey].events = ["", "", "", ""];
-              for (let i = 0; i < 4; i++) {
-                memoryData[cleanKey].events[i] = item.events[i] || "";
-              }
-            }
-            memoryData[cleanKey].exitTime = item.exitTime || "";
-            memoryData[cleanKey].amOff = item.amOff !== undefined ? item.amOff : false;
-            memoryData[cleanKey].pmOff = item.pmOff !== undefined ? item.pmOff : false;
-            memoryData[cleanKey].isImportant = item.isImportant !== undefined ? item.isImportant : false;
-          }
+          nextMemoryData[cleanKey] = {
+            amOff: item.amOff === true,
+            pmOff: item.pmOff === true,
+            exitTime: item.exitTime || "",
+            events: item.events ? [
+              item.events[0] || "",
+              item.events[1] || "",
+              item.events[2] || "",
+              item.events[3] || ""
+            ] : ["", "", "", ""],
+            isImportant: item.isImportant === true
+          };
         }
+        memoryData = nextMemoryData;
         saveStorage();
       }
       renderCalendar();
@@ -389,7 +389,6 @@
       cleanup();
     };
 
-    // crossOrigin属性を付与せず、純粋なスクリプトタグとして読み込み
     script.src = `${GAS_API_URL}?callback=${cbName}&_t=${Date.now()}`;
     script.onerror = function() {
       if (isCompleted) return;
@@ -600,7 +599,7 @@
     renderCalendar();
   });
 
-  // 更新ボタン：フォーカス解除と保存完了を待機してから取得
+  // 更新ボタン：保存完了を待機してから完全再取得
   document.getElementById("refreshBtn").addEventListener("click", async () => {
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
