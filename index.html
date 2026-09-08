@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.4 -->
-      <span class="app-version" id="appVersion">v1.0.4</span>
+      <!-- 🏷️ バージョン v1.0.5 -->
+      <span class="app-version" id="appVersion">v1.0.5</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,14 +266,14 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.4";
+  const APP_VERSION = "v1.0.5";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v104";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v105";
 
   let memoryData = {};
-  let saveTimerMap = {};
+  let isSavingToCloud = false;
 
   function toKey(d) {
     const year = d.getFullYear();
@@ -303,7 +303,38 @@
     label.textContent = text;
   }
 
-  // 📱 画面の全入力枠から強制吸い上げ（スマホのフォーカス残存対策）
+  // クラウド保存（POST：keepaliveでスマホ通信を完全保証）
+  function sendToCloud(dateKey) {
+    isSavingToCloud = true;
+    setSyncStatus(true, "保存中...");
+    const dayData = memoryData[dateKey] || {};
+
+    const payload = {
+      date: dateKey,
+      amOff: !!dayData.amOff,
+      pmOff: !!dayData.pmOff,
+      exitTime: dayData.exitTime || "",
+      events: dayData.events || ["", "", "", ""],
+      isImportant: !!dayData.isImportant
+    };
+
+    // 📱 keepalive: true でスマホ画面切替時も通信を完結させる
+    fetch(GAS_API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      keepalive: true,
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(payload)
+    }).then(() => {
+      isSavingToCloud = false;
+      setSyncStatus(false, "保存完了");
+    }).catch(() => {
+      isSavingToCloud = false;
+      setSyncStatus(false, "端末に保存済");
+    });
+  }
+
+  // 画面の全入力枠から強制吸い上げ
   function flushAllInputsToMemory() {
     document.querySelectorAll(".day-cell").forEach(cell => {
       const dateKey = cell.dataset.dateKey;
@@ -329,8 +360,11 @@
 
   // クラウドからデータ取得
   function fetchCloudData() {
-    // 取得前にスマホで入力途中の文字を吸い上げて送信
-    flushAllInputsToMemory();
+    if (isSavingToCloud) {
+      setTimeout(fetchCloudData, 600);
+      return;
+    }
+
     setSyncStatus(true, "データ取得中...");
 
     const cbName = "cb_" + Math.floor(Math.random() * 10000000);
@@ -375,32 +409,6 @@
       if (script.parentNode) script.parentNode.removeChild(script);
     };
     document.body.appendChild(script);
-  }
-
-  // クラウド保存（POST）
-  function sendToCloud(dateKey) {
-    setSyncStatus(true, "保存中...");
-    const dayData = memoryData[dateKey] || {};
-
-    const payload = {
-      date: dateKey,
-      amOff: !!dayData.amOff,
-      pmOff: !!dayData.pmOff,
-      exitTime: dayData.exitTime || "",
-      events: dayData.events || ["", "", "", ""],
-      isImportant: !!dayData.isImportant
-    };
-
-    fetch(GAS_API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify(payload)
-    }).then(() => {
-      setSyncStatus(false, "保存完了");
-    }).catch(() => {
-      setSyncStatus(false, "端末に保存済");
-    });
   }
 
   function renderCalendar() {
@@ -559,36 +567,19 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      // 📱 モバイル対応：入力値の同期関数
-      const syncInputVal = (isImmediateCloudSend = false) => {
+      // 入力値を確定してクラウド送信する関数
+      const commitEvent = () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
-        dayData.events[i] = input.value.trim();
-        saveStorage();
-        if (isImmediateCloudSend) {
+        const val = input.value.trim();
+        if (dayData.events[i] !== val) {
+          dayData.events[i] = val;
+          saveStorage();
           sendToCloud(dateKey);
         }
       };
 
-      // 1文字入力ごと（メモリ保存＋入力休止後の自動送信）
-      input.addEventListener("input", () => {
-        syncInputVal(false);
-        clearTimeout(saveTimerMap[dateKey]);
-        setSyncStatus(true, "入力中...");
-        saveTimerMap[dateKey] = setTimeout(() => {
-          sendToCloud(dateKey);
-        }, 1200);
-      });
-
-      // 確定時（Enter・キーボード閉じ・タップ外れ）
-      input.addEventListener("change", () => {
-        clearTimeout(saveTimerMap[dateKey]);
-        syncInputVal(true);
-      });
-
-      input.addEventListener("blur", () => {
-        clearTimeout(saveTimerMap[dateKey]);
-        syncInputVal(true);
-      });
+      input.addEventListener("change", commitEvent);
+      input.addEventListener("blur", commitEvent);
 
       eventsList.appendChild(input);
     }
@@ -616,10 +607,10 @@
   });
 
   document.getElementById("refreshBtn").addEventListener("click", () => {
-    // 📱 キーボードが開いている場合はアクティブ要素を強制フォーカス解除
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
     }
+    flushAllInputsToMemory();
     fetchCloudData();
   });
 
