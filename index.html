@@ -59,7 +59,6 @@
       letter-spacing: 0.05em;
     }
 
-    /* 🏷️ バージョンバッジ表示 */
     .app-version {
       font-size: 0.72rem;
       font-weight: 700;
@@ -239,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン表示箇所（コード更新時にここを書き換えます） -->
-      <span class="app-version" id="appVersion">v1.0.0</span>
+      <!-- 🏷️ バージョン v1.0.1 -->
+      <span class="app-version" id="appVersion">v1.0.1</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,15 +265,12 @@
 </div>
 
 <script>
-  // ⚙️ GAS Web API URL
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-
-  // アプリバージョン
-  const APP_VERSION = "v1.0.0";
+  const APP_VERSION = "v1.0.1";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v_SHIELD";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v101";
 
   let memoryData = {};
   let saveTimerMap = {};
@@ -307,49 +303,26 @@
     label.textContent = text;
   }
 
-  function scrapeCurrentInputs() {
-    document.querySelectorAll(".day-cell").forEach(cell => {
-      const dateKey = cell.dataset.dateKey;
-      if (!dateKey) return;
-      if (!memoryData[dateKey]) {
-        memoryData[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
-      }
-      const inputs = cell.querySelectorAll(".event-input");
-      inputs.forEach((inp, idx) => {
-        memoryData[dateKey].events[idx] = inp.value.trim();
-      });
-    });
-    saveStorage();
-  }
-
+  // 💡 クラウドから最新データを強制取得・上書き反映（キャッシュ完全無効化）
   function fetchCloudData() {
-    scrapeCurrentInputs();
-    setSyncStatus(true, "データ取得中...");
+    setSyncStatus(true, "最新データ取得中...");
 
-    const cb = "cb_" + Date.now();
+    // ランダム英数字＋タイムスタンプで絶対にキャッシュさせない
+    const rand = Math.random().toString(36).substring(2, 9);
+    const cb = "cb_" + Date.now() + "_" + rand;
     const script = document.createElement("script");
 
     window[cb] = function(cloudData) {
       if (cloudData && typeof cloudData === "object") {
+        // クラウドのデータを完全に正（最新）としてメモリへ適用
+        const newData = {};
         for (const k in cloudData) {
           const item = cloudData[k];
           const parts = k.split(/[\/\-]/);
           const cleanKey = parts.length === 3 ? `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}` : k;
-
-          if (!memoryData[cleanKey]) {
-            memoryData[cleanKey] = item;
-          } else {
-            for (let i = 0; i < 4; i++) {
-              if (!memoryData[cleanKey].events[i] && item.events && item.events[i]) {
-                memoryData[cleanKey].events[i] = item.events[i];
-              }
-            }
-            if (!memoryData[cleanKey].exitTime && item.exitTime) memoryData[cleanKey].exitTime = item.exitTime;
-            if (item.amOff) memoryData[cleanKey].amOff = true;
-            if (item.pmOff) memoryData[cleanKey].pmOff = true;
-            if (item.isImportant) memoryData[cleanKey].isImportant = true;
-          }
+          newData[cleanKey] = item;
         }
+        memoryData = newData;
         saveStorage();
       }
       renderCalendar();
@@ -358,9 +331,10 @@
       if (script.parentNode) script.parentNode.removeChild(script);
     };
 
-    script.src = `${GAS_API_URL}?callback=${cb}&_t=${Date.now()}`;
+    // 複数のキャッシュキラーパラメータを付与
+    script.src = `${GAS_API_URL}?callback=${cb}&_rnd=${rand}&_ts=${Date.now()}`;
     script.onerror = function() {
-      setSyncStatus(false, "オフライン表示");
+      setSyncStatus(false, "同期エラー");
       delete window[cb];
       if (script.parentNode) script.parentNode.removeChild(script);
     };
@@ -563,19 +537,16 @@
   }
 
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
-    scrapeCurrentInputs();
     displayDate.setMonth(displayDate.getMonth() - 1);
     renderCalendar();
   });
 
   document.getElementById("nextMonthBtn").addEventListener("click", () => {
-    scrapeCurrentInputs();
     displayDate.setMonth(displayDate.getMonth() + 1);
     renderCalendar();
   });
 
   document.getElementById("todayBtn").addEventListener("click", () => {
-    scrapeCurrentInputs();
     displayDate = new Date();
     renderCalendar();
   });
@@ -584,7 +555,7 @@
     fetchCloudData();
   });
 
-  // 起動シーケンス
+  // 起動処理
   document.getElementById("appVersion").textContent = APP_VERSION;
   memoryData = loadStorage();
   renderCalendar();
