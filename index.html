@@ -46,6 +46,45 @@
       gap: 8px;
     }
 
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .current-month-display {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    /* 🏷️ バージョンバッジ表示 */
+    .app-version {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #4b5563;
+      background: #e5e7eb;
+      padding: 2px 6px;
+      border-radius: 12px;
+      letter-spacing: 0.03em;
+    }
+
+    .sync-status {
+      font-size: 0.8rem;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sync-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+    .syncing .sync-indicator { background: #f59e0b; }
+
     .nav-buttons {
       display: flex;
       gap: 6px;
@@ -64,27 +103,6 @@
       transition: background 0.15s;
     }
     button:hover { background: #f3f4f6; }
-
-    .current-month-display {
-      font-size: 1.3rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-    }
-
-    .sync-status {
-      font-size: 0.8rem;
-      color: #6b7280;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .sync-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-    }
-    .syncing .sync-indicator { background: #f59e0b; }
 
     .calendar-grid {
       display: grid;
@@ -219,8 +237,10 @@
 
 <div class="container">
   <header>
-    <div style="display:flex; align-items:center; gap: 12px;">
+    <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
+      <!-- 🏷️ バージョン表示箇所（コード更新時にここを書き換えます） -->
+      <span class="app-version" id="appVersion">v1.0.0</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -246,7 +266,11 @@
 </div>
 
 <script>
+  // ⚙️ GAS Web API URL
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
+
+  // アプリバージョン
+  const APP_VERSION = "v1.0.0";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
@@ -283,7 +307,6 @@
     label.textContent = text;
   }
 
-  // 🛡️ 画面上の全入力欄から今その場で入力されている文字を強制吸い上げ
   function scrapeCurrentInputs() {
     document.querySelectorAll(".day-cell").forEach(cell => {
       const dateKey = cell.dataset.dateKey;
@@ -299,9 +322,7 @@
     saveStorage();
   }
 
-  // クラウドからデータ取得
   function fetchCloudData() {
-    // 🛡️ 取得前に、今手元で入力中の文字があれば吸い上げて保護
     scrapeCurrentInputs();
     setSyncStatus(true, "データ取得中...");
 
@@ -315,11 +336,9 @@
           const parts = k.split(/[\/\-]/);
           const cleanKey = parts.length === 3 ? `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}` : k;
 
-          // 🛡️ 手元にすでに入力がある場合は手元を最優先し、消去を防ぐ
           if (!memoryData[cleanKey]) {
             memoryData[cleanKey] = item;
           } else {
-            // events の各要素で、手元が空白でクラウドに値がある場合のみ補完
             for (let i = 0; i < 4; i++) {
               if (!memoryData[cleanKey].events[i] && item.events && item.events[i]) {
                 memoryData[cleanKey].events[i] = item.events[i];
@@ -348,7 +367,6 @@
     document.body.appendChild(script);
   }
 
-  // クラウドへ保存
   function sendToCloud(dateKey) {
     setSyncStatus(true, "保存中...");
     const dayData = memoryData[dateKey] || {};
@@ -374,7 +392,6 @@
     });
   }
 
-  // カレンダー描画
   function renderCalendar() {
     const grid = document.getElementById("calendarGrid");
 
@@ -393,19 +410,16 @@
     const prevLastDate = new Date(year, month, 0).getDate();
     const todayKey = toKey(new Date());
 
-    // 前月
     for (let i = startDay - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevLastDate - i);
       grid.appendChild(createCell(d, true, todayKey));
     }
 
-    // 当月
     for (let i = 1; i <= totalDays; i++) {
       const d = new Date(year, month, i);
       grid.appendChild(createCell(d, false, todayKey));
     }
 
-    // 翌月
     const totalPlaced = startDay + totalDays;
     const remaining = (7 - (totalPlaced % 7)) % 7;
     for (let i = 1; i <= remaining; i++) {
@@ -443,7 +457,6 @@
     const statusFlags = document.createElement("div");
     statusFlags.className = "status-flags";
 
-    // 重要（！）チェック
     const impLabel = document.createElement("label");
     impLabel.title = "重要日";
     const impCheck = document.createElement("input");
@@ -461,7 +474,6 @@
     impLabel.appendChild(impCheck);
     impLabel.appendChild(impText);
 
-    // 午前休チェック
     const amLabel = document.createElement("label");
     amLabel.title = "午前休";
     const amCheck = document.createElement("input");
@@ -476,7 +488,6 @@
     amLabel.appendChild(amCheck);
     amLabel.appendChild(document.createTextNode("前"));
 
-    // 午後休チェック
     const pmLabel = document.createElement("label");
     pmLabel.title = "午後休";
     const pmCheck = document.createElement("input");
@@ -495,7 +506,6 @@
     statusFlags.appendChild(amLabel);
     statusFlags.appendChild(pmLabel);
 
-    // 退勤丸数字
     const timeSelect = document.createElement("select");
     timeSelect.className = "leave-time-select";
     const emptyOpt = document.createElement("option");
@@ -523,7 +533,6 @@
     header.appendChild(statusGroup);
     cell.appendChild(header);
 
-    // 予定入力枠（4行）
     const eventsList = document.createElement("div");
     eventsList.className = "events-list";
 
@@ -534,13 +543,11 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
-      // 🛡️ 1文字打つたびに即座に内部メモリに保持（Enterやクリック不要）
       input.addEventListener("input", () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
         dayData.events[i] = input.value;
         saveStorage();
 
-        // 打ち終わりを検知して自動でクラウド送信
         clearTimeout(saveTimerMap[dateKey]);
         setSyncStatus(true, "保存中...");
         saveTimerMap[dateKey] = setTimeout(() => {
@@ -555,7 +562,6 @@
     return cell;
   }
 
-  // ボタンイベント
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
     scrapeCurrentInputs();
     displayDate.setMonth(displayDate.getMonth() - 1);
@@ -579,6 +585,7 @@
   });
 
   // 起動シーケンス
+  document.getElementById("appVersion").textContent = APP_VERSION;
   memoryData = loadStorage();
   renderCalendar();
   fetchCloudData();
