@@ -238,8 +238,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.0.8 -->
-      <span class="app-version" id="appVersion">v1.0.8</span>
+      <!-- 🏷️ バージョン v1.0.9 -->
+      <span class="app-version" id="appVersion">v1.0.9</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,11 +266,11 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.0.8";
+  const APP_VERSION = "v1.0.9";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v108";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v109";
 
   let memoryData = {};
   let isSaving = false;
@@ -303,7 +303,7 @@
     label.textContent = text;
   }
 
-  // クラウド保存（認証情報の除外と安全な非同期送信）
+  // クラウド保存（資格情報の除外と安全な非同期送信）
   async function sendToCloud(dateKey) {
     isSaving = true;
     setSyncStatus(true, "保存中...");
@@ -322,7 +322,7 @@
       await fetch(GAS_API_URL, {
         method: "POST",
         mode: "no-cors",
-        credentials: "omit", // Android ChromeのGoogleアカウントCookieによる干渉を完全に遮断
+        credentials: "omit",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
@@ -334,7 +334,7 @@
     }
   }
 
-  // クラウドからデータ取得（JSONP：anonymous付与とタイムアウト保護）
+  // クラウドからデータ取得（JSONP：CORS強制属性を排除した標準接続）
   function fetchCloudData() {
     setSyncStatus(true, "データ取得中...");
 
@@ -342,7 +342,7 @@
     const script = document.createElement("script");
     let isCompleted = false;
 
-    // 15秒の通信タイムアウトを設定
+    // 15秒の通信タイムアウト制御
     const timer = setTimeout(() => {
       if (!isCompleted) {
         isCompleted = true;
@@ -389,7 +389,7 @@
       cleanup();
     };
 
-    script.crossOrigin = "anonymous"; // GoogleアカウントCookieを乗せずに匿名実行
+    // crossOrigin属性を付与せず、純粋なスクリプトタグとして読み込み
     script.src = `${GAS_API_URL}?callback=${cbName}&_t=${Date.now()}`;
     script.onerror = function() {
       if (isCompleted) return;
@@ -605,7 +605,6 @@
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
     }
-    // 保存処理中の場合は最大1秒待機
     let waitCount = 0;
     while (isSaving && waitCount < 10) {
       await new Promise(res => setTimeout(res, 100));
