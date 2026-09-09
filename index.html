@@ -222,6 +222,16 @@
     .event-input:focus { background: #ffffff; border-color: #60a5fa; box-shadow: 0 0 0 1px #60a5fa; }
     .event-input::placeholder { color: #9ca3af; font-size: 0.7rem; }
 
+    /* 🌟 文字装飾スタイル */
+    .event-input.style-bold {
+      font-weight: 700;
+      color: #111827;
+    }
+    .event-input.style-important {
+      font-weight: 700;
+      color: #dc2626;
+    }
+
     @media (max-width: 600px) {
       body { padding: 4px; }
       .container { padding: 6px; }
@@ -238,8 +248,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
-      <!-- 🏷️ バージョン v1.1.0 -->
-      <span class="app-version" id="appVersion">v1.1.0</span>
+      <!-- 🏷️ バージョン v1.2.0 -->
+      <span class="app-version" id="appVersion">v1.2.0</span>
       <div class="sync-status" id="syncStatus">
         <div class="sync-indicator"></div>
         <span id="syncText">同期準備完了</span>
@@ -266,11 +276,11 @@
 
 <script>
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx0MklscF9LxXynj5Sh5RJbZXPcRVpyQqbOhZLV_QzUrBwKu-JeetE3G-04XsEBAUQ6/exec";
-  const APP_VERSION = "v1.1.0";
+  const APP_VERSION = "v1.2.0";
 
   let displayDate = new Date();
   const CIRCLED_NUMBERS = ["-", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-  const STORAGE_KEY = "simple_calendar_cloud_cache_v110";
+  const STORAGE_KEY = "simple_calendar_cloud_cache_v120";
 
   let memoryData = {};
   let isSaving = false;
@@ -303,7 +313,7 @@
     label.textContent = text;
   }
 
-  // クラウド保存（資格情報除外のプレーン非同期POST）
+  // クラウド保存（スタイル情報も含めて送信）
   async function sendToCloud(dateKey) {
     isSaving = true;
     setSyncStatus(true, "保存中...");
@@ -315,6 +325,7 @@
       pmOff: !!dayData.pmOff,
       exitTime: dayData.exitTime || "",
       events: dayData.events || ["", "", "", ""],
+      eventStyles: dayData.eventStyles || [0, 0, 0, 0],
       isImportant: !!dayData.isImportant
     };
 
@@ -334,7 +345,7 @@
     }
   }
 
-  // クラウドからデータ取得（JSONP：クラウドを絶対基準とする完全同期）
+  // クラウドからデータ取得（完全同期方式）
   function fetchCloudData() {
     setSyncStatus(true, "データ取得中...");
 
@@ -361,7 +372,6 @@
       clearTimeout(timer);
 
       if (cloudData && typeof cloudData === "object") {
-        // 🌟 クラウドのデータを正として完全に再構築（シートから消えたデータは綺麗に消去される）
         const nextMemoryData = {};
         for (const k in cloudData) {
           const item = cloudData[k];
@@ -378,6 +388,12 @@
               item.events[2] || "",
               item.events[3] || ""
             ] : ["", "", "", ""],
+            eventStyles: item.eventStyles ? [
+              item.eventStyles[0] || 0,
+              item.eventStyles[1] || 0,
+              item.eventStyles[2] || 0,
+              item.eventStyles[3] || 0
+            ] : [0, 0, 0, 0],
             isImportant: item.isImportant === true
           };
         }
@@ -443,9 +459,17 @@
     const dayOfWeek = dateObj.getDay();
 
     if (!memoryData[dateKey]) {
-      memoryData[dateKey] = { amOff: false, pmOff: false, exitTime: "", events: ["", "", "", ""], isImportant: false };
+      memoryData[dateKey] = {
+        amOff: false,
+        pmOff: false,
+        exitTime: "",
+        events: ["", "", "", ""],
+        eventStyles: [0, 0, 0, 0],
+        isImportant: false
+      };
     }
     const dayData = memoryData[dateKey];
+    if (!dayData.eventStyles) dayData.eventStyles = [0, 0, 0, 0];
 
     const cell = document.createElement("div");
     cell.dataset.dateKey = dateKey;
@@ -558,6 +582,46 @@
       input.placeholder = `予定 ${i + 1}`;
       input.value = (dayData.events && dayData.events[i]) ? dayData.events[i] : "";
 
+      // 初期スタイル適用（0:通常, 1:太字, 2:赤太字）
+      const currentStyle = (dayData.eventStyles && dayData.eventStyles[i]) || 0;
+      if (currentStyle === 1) input.classList.add("style-bold");
+      if (currentStyle === 2) input.classList.add("style-important");
+
+      const applyStyleClass = (st) => {
+        input.classList.remove("style-bold", "style-important");
+        if (st === 1) input.classList.add("style-bold");
+        if (st === 2) input.classList.add("style-important");
+      };
+
+      // スタイル切り替え関数（0 -> 1 -> 2 -> 0）
+      const toggleStyle = () => {
+        if (!dayData.eventStyles) dayData.eventStyles = [0, 0, 0, 0];
+        const nextStyle = ((dayData.eventStyles[i] || 0) + 1) % 3;
+        dayData.eventStyles[i] = nextStyle;
+        applyStyleClass(nextStyle);
+        saveStorage();
+        sendToCloud(dateKey);
+        if (window.getSelection) window.getSelection().removeAllRanges();
+      };
+
+      // PC向け：ダブルクリックでスタイル変更
+      input.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        toggleStyle();
+      });
+
+      // スマホ向け：ダブルタップ判定（350ms以内の連続タップ）
+      let lastTapTime = 0;
+      input.addEventListener("touchend", (e) => {
+        const currentTime = Date.now();
+        const tapGap = currentTime - lastTapTime;
+        if (tapGap < 350 && tapGap > 0) {
+          e.preventDefault();
+          toggleStyle();
+        }
+        lastTapTime = currentTime;
+      });
+
       const commit = () => {
         if (!dayData.events) dayData.events = ["", "", "", ""];
         const val = input.value.trim();
@@ -584,22 +648,25 @@
     return cell;
   }
 
+  // 🌟 月切り替え：手元データで瞬時に画面を描画し、裏側で静かに最新データを取得
   document.getElementById("prevMonthBtn").addEventListener("click", () => {
     displayDate.setMonth(displayDate.getMonth() - 1);
     renderCalendar();
+    fetchCloudData();
   });
 
   document.getElementById("nextMonthBtn").addEventListener("click", () => {
     displayDate.setMonth(displayDate.getMonth() + 1);
     renderCalendar();
+    fetchCloudData();
   });
 
   document.getElementById("todayBtn").addEventListener("click", () => {
     displayDate = new Date();
     renderCalendar();
+    fetchCloudData();
   });
 
-  // 更新ボタン：保存完了を待機してから完全再取得
   document.getElementById("refreshBtn").addEventListener("click", async () => {
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
