@@ -248,6 +248,8 @@
   <header>
     <div class="header-left">
       <div class="current-month-display" id="monthDisplay">----年 --月</div>
+      <!-- 📱 アプリ名とバージョンを追加 -->
+      <span class="app-version">カレンダーくん (<span id="appNameVersion">v1.2.0</span>)</span>
       <!-- 🏷️ バージョン v1.2.0 -->
       <span class="app-version" id="appVersion">v1.2.0</span>
       <div class="sync-status" id="syncStatus">
@@ -681,6 +683,7 @@
 
   // 起動処理
   document.getElementById("appVersion").textContent = APP_VERSION;
+  document.getElementById("appNameVersion").textContent = APP_VERSION;
   memoryData = loadStorage();
   renderCalendar();
   fetchCloudData();
